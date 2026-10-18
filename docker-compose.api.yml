@@ -1,0 +1,83 @@
+# CIEDOcr HTTP service (server.py — docs/extract-api-v1.md)
+#
+# GPU (default):
+#   docker compose -f docker-compose.api.yml up -d --build
+# CPU-only (slower, no nvidia-container-toolkit needed):
+#   docker compose -f docker-compose.api.yml -f docker-compose.cpu.yml up -d --build
+#
+# Verify (host port 8082):
+#   curl http://localhost:8082/health
+#   curl -s --data-binary @report.pdf -H 'Content-Type: application/pdf' \
+#        http://localhost:8082/v1/extract | jq .
+#
+# The central Pi points CIEDOCR_URL at http://<this-host>:8082 (LAN).
+
+services:
+  # Same service name as docker-compose.yml/.cpu.yml so the CPU override composes.
+  ciedocr:
+    build: .
+    image: ciedocr:latest
+
+    # Override the CLI entrypoint with the HTTP server
+    entrypoint: ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+
+    # Host 8082 (8000 is taken by ollama-webui on bigboy) → container 8000
+    ports:
+      - "8082:8000"
+
+    volumes:
+      # HuggingFace model weights persist across restarts (first run downloads ~1.8 GB)
+      - model_cache:/cache
+
+    environment:
+      HF_HOME: /cache/huggingface
+
+    # Pin to GPU 1 (RTX 3080 Ti) — GPU 0 (RTX 4090) is reserved for Ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+
+    # Model takes a while to load — don't report healthy until /health says ready
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+    restart: unless-stopped
+
+  annotator:
+    build: .
+    image: ciedocr:latest
+
+    entrypoint: ["uvicorn", "annotator.app:app", "--host", "0.0.0.0", "--port", "8000"]
+
+    ports:
+      - "8090:8000"
+
+    volumes:
+      - annotator_work:/app/annotator/work
+      - annotator_submissions:/app/annotator/submissions
+
+    environment:
+      # Reach the CIEDOcr extraction service via docker network
+      CIEDOCR_URL: http://ciedocr:8000
+
+    depends_on:
+      - ciedocr
+
+    restart: unless-stopped
+
+volumes:
+  model_cache:
+    name: ciedocr_model_cache
+  annotator_work:
+    name: ciedocr_annotator_work
+  annotator_submissions:
+    name: ciedocr_annotator_submissions

@@ -1,0 +1,49 @@
+# CiedOCR — GPU deployment (server default)
+#
+# Setup:
+#   mkdir -p input output
+#   docker compose build
+#
+# Single PDF:
+#   docker compose run --rm ciedocr /data/input/report.pdf --output /data/output/report.json
+#
+# Batch (all PDFs in ./input/):
+#   docker compose run --rm --entrypoint bash ciedocr \
+#     -c 'python main.py --output-dir /data/output /data/input/*.pdf'
+#
+# Pre-download model (run once, survives in named volume):
+#   docker compose run --rm ciedocr --help   # triggers model download on first real run
+#   docker compose run --rm --entrypoint bash ciedocr \
+#     -c 'python -c "from ocr_engine import OCREngine; OCREngine()._load()"'
+
+services:
+  ciedocr:
+    build: .
+    image: ciedocr:latest
+
+    volumes:
+      # PDFs to process (read-only)
+      - ./input:/data/input:ro
+      # JSON results land here
+      - ./output:/data/output
+      # HuggingFace model weights persist across builds/restarts
+      - model_cache:/cache
+
+    environment:
+      HF_HOME: /cache/huggingface
+
+    # GPU access — requires nvidia-container-toolkit on the host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # Default shows help; override on the command line
+    command: ["--help"]
+
+volumes:
+  model_cache:
+    name: ciedocr_model_cache

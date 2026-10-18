@@ -1,0 +1,21 @@
+# Vision model: Qwen3-VL via Transformers (Abbott extractor, extractors/abbott_merlin.py)
+# transformers must be new enough to include Qwen3VLForConditionalGeneration.
+transformers>=4.45.0
+torch>=2.0.0
+torchvision>=0.15.0
+accelerate>=0.26.0
+bitsandbytes>=0.43.0        # 4-bit quantization for the Qwen3-VL model (vqa.py)
+
+# PDF → image conversion (requires system package: poppler-utils)
+pdf2image>=1.16.0
+
+# Image handling
+Pillow>=10.0.0
+
+# Fallback: direct PDF text extraction (for --no-model mode)
+pdfplumber>=0.10.0
+
+# HTTP service (server.py — implements docs/extract-api-v1.md)
+fastapi>=0.110.0
+uvicorn>=0.29.0
+python-multipart>=0.0.9    # FastAPI UploadFile (used by annotator)

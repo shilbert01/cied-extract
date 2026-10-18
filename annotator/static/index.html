@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CIEDOcr Ground-Truth Annotator</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">CIEDOcr · Ground-Truth Annotator</div>
+    <div class="controls">
+      <input type="file" id="pdfFile" accept="application/pdf">
+      <select id="vendor"></select>
+      <button id="extractBtn">Extract</button>
+      <span id="status" class="status"></span>
+    </div>
+  </header>
+
+  <main class="split">
+    <!-- PDF pane -->
+    <section class="pane pdf-pane">
+      <div id="pdfEmpty" class="placeholder">Pick a PDF and a vendor, then <b>Extract</b>.</div>
+      <iframe id="pdfFrame" title="report PDF" hidden></iframe>
+    </section>
+
+    <!-- Fields pane -->
+    <section class="pane fields-pane">
+      <div class="meta">
+        <label>Device model <input id="metaDevice" placeholder="e.g. TEO DR"></label>
+        <label>Device type
+          <select id="metaDeviceType">
+            <option value="">—</option>
+            <option>Pacemaker</option>
+            <option>ICD</option>
+            <option>CRT-D</option>
+            <option>CRT-P</option>
+            <option>S-ICD</option>
+            <option>Leadless Pacemaker</option>
+          </select>
+        </label>
+        <label>Report type <input id="metaReportType" placeholder="e.g. FollowUpReport"></label>
+      </div>
+
+      <div class="fields-head">
+        <h3>Extracted fields <span id="fieldCount" class="muted"></span></h3>
+        <span id="engineInfo" class="muted"></span>
+      </div>
+
+      <div id="fields" class="fields"></div>
+
+      <div class="actions">
+        <button id="addFieldBtn" class="secondary">+ Add field</button>
+        <button id="saveBtn" disabled>Submit ground truth</button>
+      </div>
+      <div id="saveMsg" class="save-msg"></div>
+      <p class="hint">Edit any value; add fields the extractor missed; remove wrong ones.
+        Numbers/true/false/null are stored typed, everything else as text. Objects/arrays
+        are edited as JSON.</p>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,1102 @@
+{
+  "paddle-ocr": {
+    "freeze": {
+      "match": 11,
+      "total": 14,
+      "pct": 78,
+      "latency_s": 51.3,
+      "misses": [
+        [
+          "av_sensed_ms",
+          null,
+          "150"
+        ],
+        [
+          "rate_adaptive_av",
+          null,
+          "Mittel"
+        ],
+        [
+          "vip",
+          null,
+          "Aus"
+        ]
+      ]
+    },
+    "summary": {
+      "match": 0,
+      "total": 51,
+      "pct": 0,
+      "latency_s": 89.7,
+      "misses": [
+        [
+          "battery_ra.current_ua",
+          null,
+          "12,0 uA"
+        ],
+        [
+          "battery_ra.estimated_longevity",
+          null,
+          "11,3 Jahre"
+        ],
+        [
+          "battery_ra.implant_date",
+          null,
+          "21 Jun 2026"
+        ],
+        [
+          "battery_ra.remaining_capacity_pct",
+          null,
+          "99 %"
+        ],
+        [
+          "battery_ra.rrt",
+          null,
+          ">5 Jahre"
+        ],
+        [
+          "battery_ra.voltage",
+          null,
+          ">3,3 V"
+        ],
+        [
+          "battery_rv.current_ua",
+          null,
+          "11,0 uA"
+        ],
+        [
+          "battery_rv.estimated_longevity",
+          null,
+          "15,8 Jahre"
+        ],
+        [
+          "battery_rv.implant_date",
+          null,
+          "18 Jun 2026"
+        ],
+        [
+          "battery_rv.remaining_capacity_pct",
+          null,
+          "99 %"
+        ],
+        [
+          "battery_rv.rrt",
+          null,
+          ">5 Jahre"
+        ],
+        [
+          "battery_rv.voltage",
+          null,
+          "3,0 V"
+        ],
+        [
+          "device",
+          null,
+          "Aveir™ DR LP LSP201A 40 (RA) / LSP202V 41 (RV)"
+        ],
+        [
+          "diagnostics.ams_episodes",
+          null,
+          "1"
+        ],
+        [
+          "diagnostics.ap_paced_pct",
+          null,
+          "27%"
+        ],
+        [
+          "diagnostics.mode_switch_pct",
+          null,
+          "<1%"
+        ],
+        [
+          "diagnostics.since",
+          null,
+          "22 Jun 2026 20:11"
+        ],
+        [
+          "diagnostics.vp_paced_pct",
+          null,
+          "16%"
+        ],
+        [
+          "facility",
+          null,
+          "HZ Leipzig"
+        ],
+        [
+          "interrogation_date",
+          null,
+          "24 Jun 2026"
+        ],
+        [
+          "parameters.av_paced_ms",
+          null,
+          "200 ms"
+        ],
+        [
+          "parameters.av_sensed_ms",
+          null,
+          "150 ms"
+        ],
+        [
+          "parameters.base_rate",
+          null,
+          "50 min⁻¹"
+        ],
+        [
+          "parameters.max_sensor_rate",
+          null,
+          "130 min⁻¹"
+        ],
+        [
+          "parameters.mode",
+          null,
+          "DDD"
+        ],
+        [
+          "parameters.upper_rate_limit",
+          null,
+          "130 min⁻¹"
+        ],
+        [
+          "patient",
+          null,
+          "DEMO"
+        ],
+        [
+          "report_type",
+          null,
+          "SummaryReport"
+        ],
+        [
+          "stimulation_ra.amplitude_v",
+          null,
+          "2,5 V"
+        ],
+        [
+          "stimulation_ra.configuration",
+          null,
+          "Bipolar"
+        ],
+        [
+          "stimulation_ra.pulse_width_ms",
+          null,
+          "0,4 ms"
+        ],
+        [
+          "stimulation_ra.senseability",
+          null,
+          "Aus"
+        ],
+        [
+          "stimulation_ra.sensitivity_mv",
+          null,
+          "0,5 mV"
+        ],
+        [
+          "stimulation_rv.amplitude_v",
+          null,
+          "2,5 V"
+        ],
+        [
+          "stimulation_rv.configuration",
+          null,
+          "Bipolar"
+        ],
+        [
+          "stimulation_rv.pulse_width_ms",
+          null,
+          "0,4 ms"
+        ],
+        [
+          "stimulation_rv.senseability",
+          null,
+          "Aus"
+        ],
+        [
+          "stimulation_rv.sensitivity_mv",
+          null,
+          "2,0 mV"
+        ],
+        [
+          "test_ra.impedance_date",
+          null,
+          "19 Jun 2026"
+        ],
+        [
+          "test_ra.impedance_ohm",
+          null,
+          "330 Ω"
+        ],
+        [
+          "test_ra.pacing_threshold",
+          null,
+          "2,75 V @ 0,4 ms"
+        ],
+        [
+          "test_ra.pacing_threshold_date",
+          null,
+          "22 Jun 2026"
+        ],
+        [
+          "test_ra.sensing_date",
+          null,
+          "19 Jun 2026"
+        ],
+        [
+          "test_ra.sensing_mv",
+          null,
+          "7,5 mV"
+        ],
+        [
+          "test_rv.impedance_date",
+          null,
+          "19 Jun 2026"
+        ],
+        [
+          "test_rv.impedance_ohm",
+          null,
+          "320 Ω"
+        ],
+        [
+          "test_rv.pacing_threshold",
+          null,
+          "1,25 V @ 0,4 ms"
+        ],
+        [
+          "test_rv.pacing_threshold_date",
+          null,
+          "19 Jun 2026"
+        ],
+        [
+          "test_rv.sensing_date",
+          null,
+          "19 Jun 2026"
+        ],
+        [
+          "test_rv.sensing_mv",
+          null,
+          "6,9 mV"
+        ],
+        [
+          "visit_type",
+          null,
+          "Bei der Nachsorge"
+        ]
+      ]
+    },
+    "fastpath_icd": {
+      "match": 3,
+      "total": 17,
+      "pct": 17,
+      "latency_s": 89.8,
+      "misses": [
+        [
+          "battery_current_ua",
+          null,
+          "12"
+        ],
+        [
+          "battery_eri",
+          null,
+          "> 5 Jhr."
+        ],
+        [
+          "battery_remaining_pct",
+          null,
+          ">95"
+        ],
+        [
+          "detection_params",
+          null,
+          "Aus"
+        ],
+        [
+          "impedance_hv",
+          null,
+          "Nicht durchgeführt"
+        ],
+        [
+          "impedance_v",
+          null,
+          "Nicht durchgeführt"
+        ],
+        [
+          "mode",
+          null,
+          "Stimulation"
+        ],
+        [
+          "sense_ability_v",
+          null,
+          "Ein"
+        ],
+        [
+          "sensing_config_v",
+          null,
+          "Auto"
+        ],
+        [
+          "sensing_v",
+          null,
+          "Nicht durchgeführt"
+        ],
+        [
+          "therapy",
+          null,
+          "Aus"
+        ],
+        [
+          "vf_zone",
+          null,
+          "Aus"
+        ],
+        [
+          "vt_vf_episodes",
+          null,
+          "0"
+        ],
+        [
+          "vt_zone",
+          null,
+          "Aus"
+        ]
+      ]
+    },
+    "fastpath_pm": {
+      "match": 13,
+      "total": 27,
+      "pct": 48,
+      "latency_s": 58.0,
+      "misses": [
+        [
+          "amplitude_a_v",
+          null,
+          "2,5"
+        ],
+        [
+          "amplitude_v_v",
+          null,
+          "2,5"
+        ],
+        [
+          "autocapture_a",
+          null,
+          "Aus"
+        ],
+        [
+          "autocapture_v",
+          null,
+          "Aus"
+        ],
+        [
+          "diagnostics_since",
+          null,
+          "3 Mär 2025"
+        ],
+        [
+          "followup_date",
+          "72 Schrittmacher 5153",
+          "4 Apr 2025"
+        ],
+        [
+          "pulse_width_a_ms",
+          null,
+          "0,4"
+        ],
+        [
+          "pulse_width_v_ms",
+          null,
+          "0,4"
+        ],
+        [
+          "sense_ability_a",
+          null,
+          "Aus"
+        ],
+        [
+          "sense_ability_v",
+          null,
+          "Aus"
+        ],
+        [
+          "sensitivity_a_mv",
+          null,
+          "0,5"
+        ],
+        [
+          "sensitivity_v_mv",
+          null,
+          "2,0"
+        ],
+        [
+          "stim_a_pct",
+          "2025",
+          ">99"
+        ],
+        [
+          "upper_rate_bpm",
+          null,
+          "130"
+        ]
+      ]
+    }
+  },
+  "paddle-vqa": {
+    "freeze": {
+      "match": 0,
+      "total": 14,
+      "pct": 0,
+      "latency_s": 70.9,
+      "misses": [
+        [
+          "av_paced_ms",
+          null,
+          "200"
+        ],
+        [
+          "av_sensed_ms",
+          null,
+          "150"
+        ],
+        [
+          "base_rate_bpm",
+          null,
+          "50"
+        ],
+        [
+          "device",
+          null,
+          "Aveir™ DR LP LSP201A 40 (RA) / LSP202V 41 (RV)"
+        ],
+        [
+          "facility",
+          null,
+          "HZ Leipzig"
+        ],
+        [
+          "followup_date",
+          null,
+          "24 Jun 2026"
+        ],
+        [
+          "max_sensor_rate_bpm",
+          null,
+          "130"
+        ],
+        [
+          "mode",
+          null,
+          "DDD"
+        ],
+        [
+          "rate_adaptive_av",
+          null,
+          "Mittel"
+        ],
+        [
+          "rate_adaptive_pvarp",
+          null,
+          "Hoch"
+        ],
+        [
+          "rate_hysteresis",
+          null,
+          "Aus"
+        ],
+        [
+          "upper_rate_bpm",
+          null,
+          "130"
+        ],
+        [
+          "vent_safety_pacing",
+          null,
+          "Ein"
+        ],
+        [
+          "vip",
+          null,
+          "Aus"
+        ]
+      ]
+    },
+    "summary": {
+      "match": 0,
+      "total": 51,
+      "pct": 0,
+      "latency_s": 12.9,
+      "misses": [
+        [
+          "battery_ra.current_ua",
+          null,
+          "12,0 uA"
+        ],
+        [
+          "battery_ra.estimated_longevity",
+          null,
+          "11,3 Jahre"
+        ],
+        [
+          "battery_ra.implant_date",
+          null,
+          "21 Jun 2026"
+        ],
+        [
+          "battery_ra.remaining_capacity_pct",
+          null,
+          "99 %"
+        ],
+        [
+          "battery_ra.rrt",
+          null,
+          ">5 Jahre"
+        ],
+        [
+          "battery_ra.voltage",
+          null,
+          ">3,3 V"
+        ],
+        [
+          "battery_rv.current_ua",
+          null,
+          "11,0 uA"
+        ],
+        [
+          "battery_rv.estimated_longevity",
+          null,
+          "15,8 Jahre"
+        ],
+        [
+          "battery_rv.implant_date",
+          null,
+          "18 Jun 2026"
+        ],
+        [
+          "battery_rv.remaining_capacity_pct",
+          null,
+          "99 %"
+        ],
+        [
+          "battery_rv.rrt",
+          null,
+          ">5 Jahre"
+        ],
+        [
+          "battery_rv.voltage",
+          null,
+          "3,0 V"
+        ],
+        [
+          "device",
+          null,
+          "Aveir™ DR LP LSP201A 40 (RA) / LSP202V 41 (RV)"
+        ],
+        [
+          "diagnostics.ams_episodes",
+          null,
+          "1"
+        ],
+        [
+          "diagnostics.ap_paced_pct",
+          null,
+          "27%"
+        ],
+        [
+          "diagnostics.mode_switch_pct",
+          null,
+          "<1%"
+        ],
+        [
+          "diagnostics.since",
+          null,
+          "22 Jun 2026 20:11"
+        ],
+        [
+          "diagnostics.vp_paced_pct",
+          null,
+          "16%"
+        ],
+        [
+          "facility",
+          null,
+          "HZ Leipzig"
+        ],
+        [
+          "interrogation_date",
+          null,
+          "24 Jun 2026"
+        ],
+        [
+          "parameters.av_paced_ms",
+          null,
+          "200 ms"
+        ],
+        [
+          "parameters.av_sensed_ms",
+          null,
+          "150 ms"
+        ],
+        [
+          "parameters.base_rate",
+          null,
+          "50 min⁻¹"
+        ],
+        [
+          "parameters.max_sensor_rate",
+          null,
+          "130 min⁻¹"
+        ],
+        [
+          "parameters.mode",
+          null,
+          "DDD"
+        ],
+        [
+          "parameters.upper_rate_limit",
+          null,
+          "130 min⁻¹"
+        ],
+        [
+          "patient",
+          null,
+          "DEMO"
+        ],
+        [
+          "report_type",
+          null,
+          "SummaryReport"
+        ],
+        [
+          "stimulation_ra.amplitude_v",
+          null,
+          "2,5 V"
+        ],
+        [
+          "stimulation_ra.configuration",
+          null,
+          "Bipolar"
+        ],
+        [
+          "stimulation_ra.pulse_width_ms",
+          null,
+          "0,4 ms"
+        ],
+        [
+          "stimulation_ra.senseability",
+          null,
+          "Aus"
+        ],
+        [
+          "stimulation_ra.sensitivity_mv",
+          null,
+          "0,5 mV"
+        ],
+        [
+          "stimulation_rv.amplitude_v",
+          null,
+          "2,5 V"
+        ],
+        [
+          "stimulation_rv.configuration",
+          null,
+          "Bipolar"
+        ],
+        [
+          "stimulation_rv.pulse_width_ms",
+          null,
+          "0,4 ms"
+        ],
+        [
+          "stimulation_rv.senseability",
+          null,
+          "Aus"
+        ],
+        [
+          "stimulation_rv.sensitivity_mv",
+          null,
+          "2,0 mV"
+        ],
+        [
+          "test_ra.impedance_date",
+          null,
+          "19 Jun 2026"
+        ],
+        [
+          "test_ra.impedance_ohm",
+          null,
+          "330 Ω"
+        ],
+        [
+          "test_ra.pacing_threshold",
+          null,
+          "2,75 V @ 0,4 ms"
+        ],
+        [
+          "test_ra.pacing_threshold_date",
+          null,
+          "22 Jun 2026"
+        ],
+        [
+          "test_ra.sensing_date",
+          null,
+          "19 Jun 2026"
+        ],
+        [
+          "test_ra.sensing_mv",
+          null,
+          "7,5 mV"
+        ],
+        [
+          "test_rv.impedance_date",
+          null,
+          "19 Jun 2026"
+        ],
+        [
+          "test_rv.impedance_ohm",
+          null,
+          "320 Ω"
+        ],
+        [
+          "test_rv.pacing_threshold",
+          null,
+          "1,25 V @ 0,4 ms"
+        ],
+        [
+          "test_rv.pacing_threshold_date",
+          null,
+          "19 Jun 2026"
+        ],
+        [
+          "test_rv.sensing_date",
+          null,
+          "19 Jun 2026"
+        ],
+        [
+          "test_rv.sensing_mv",
+          null,
+          "6,9 mV"
+        ],
+        [
+          "visit_type",
+          null,
+          "Bei der Nachsorge"
+        ]
+      ]
+    },
+    "fastpath_icd": {
+      "match": 0,
+      "total": 17,
+      "pct": 0,
+      "latency_s": 13.5,
+      "misses": [
+        [
+          "battery_current_ua",
+          null,
+          "12"
+        ],
+        [
+          "battery_eri",
+          null,
+          "> 5 Jhr."
+        ],
+        [
+          "battery_remaining_pct",
+          null,
+          ">95"
+        ],
+        [
+          "detection_params",
+          null,
+          "Aus"
+        ],
+        [
+          "device_model",
+          null,
+          "CDDRA300Q"
+        ],
+        [
+          "device_serial",
+          null,
+          "810131959"
+        ],
+        [
+          "followup_date",
+          null,
+          "4 Apr 2025"
+        ],
+        [
+          "impedance_hv",
+          null,
+          "Nicht durchgeführt"
+        ],
+        [
+          "impedance_v",
+          null,
+          "Nicht durchgeführt"
+        ],
+        [
+          "mode",
+          null,
+          "Stimulation"
+        ],
+        [
+          "sense_ability_v",
+          null,
+          "Ein"
+        ],
+        [
+          "sensing_config_v",
+          null,
+          "Auto"
+        ],
+        [
+          "sensing_v",
+          null,
+          "Nicht durchgeführt"
+        ],
+        [
+          "therapy",
+          null,
+          "Aus"
+        ],
+        [
+          "vf_zone",
+          null,
+          "Aus"
+        ],
+        [
+          "vt_vf_episodes",
+          null,
+          "0"
+        ],
+        [
+          "vt_zone",
+          null,
+          "Aus"
+        ]
+      ]
+    },
+    "fastpath_pm": {
+      "match": 0,
+      "total": 27,
+      "pct": 0,
+      "latency_s": 13.2,
+      "misses": [
+        [
+          "af_burden_pct",
+          null,
+          "0"
+        ],
+        [
+          "amplitude_a_v",
+          null,
+          "2,5"
+        ],
+        [
+          "amplitude_v_v",
+          null,
+          "2,5"
+        ],
+        [
+          "ams_episodes",
+          null,
+          "0"
+        ],
+        [
+          "autocapture_a",
+          null,
+          "Aus"
+        ],
+        [
+          "autocapture_v",
+          null,
+          "Aus"
+        ],
+        [
+          "av_paced_ms",
+          null,
+          "200"
+        ],
+        [
+          "av_sensed_ms",
+          null,
+          "150"
+        ],
+        [
+          "base_rate_bpm",
+          null,
+          "60"
+        ],
+        [
+          "battery_mag_freq_bpm",
+          null,
+          "100,0"
+        ],
+        [
+          "battery_remaining_pct",
+          null,
+          ">95"
+        ],
+        [
+          "battery_voltage_v",
+          null,
+          "3,08"
+        ],
+        [
+          "device_model",
+          null,
+          "2172"
+        ],
+        [
+          "device_serial",
+          null,
+          "5153558"
+        ],
+        [
+          "diagnostics_since",
+          null,
+          "3 Mär 2025"
+        ],
+        [
+          "followup_date",
+          null,
+          "4 Apr 2025"
+        ],
+        [
+          "mode",
+          null,
+          "DDD"
+        ],
+        [
+          "mode_switch_pct",
+          null,
+          "0"
+        ],
+        [
+          "pulse_width_a_ms",
+          null,
+          "0,4"
+        ],
+        [
+          "pulse_width_v_ms",
+          null,
+          "0,4"
+        ],
+        [
+          "sense_ability_a",
+          null,
+          "Aus"
+        ],
+        [
+          "sense_ability_v",
+          null,
+          "Aus"
+        ],
+        [
+          "sensitivity_a_mv",
+          null,
+          "0,5"
+        ],
+        [
+          "sensitivity_v_mv",
+          null,
+          "2,0"
+        ],
+        [
+          "stim_a_pct",
+          null,
+          ">99"
+        ],
+        [
+          "stim_v_pct",
+          null,
+          ">99"
+        ],
+        [
+          "upper_rate_bpm",
+          null,
+          "130"
+        ]
+      ]
+    }
+  },
+  "qwen2": {
+    "freeze": {
+      "match": 14,
+      "total": 14,
+      "pct": 100,
+      "latency_s": 13.0,
+      "misses": []
+    },
+    "summary": {
+      "match": 51,
+      "total": 51,
+      "pct": 100,
+      "latency_s": 34.7,
+      "misses": []
+    },
+    "fastpath_icd": {
+      "match": 17,
+      "total": 17,
+      "pct": 100,
+      "latency_s": 13.2,
+      "misses": []
+    },
+    "fastpath_pm": {
+      "match": 25,
+      "total": 27,
+      "pct": 92,
+      "latency_s": 17.5,
+      "misses": [
+        [
+          "battery_mag_freq_bpm",
+          "100",
+          "100,0"
+        ],
+        [
+          "followup_date",
+          "3 Mär 2025",
+          "4 Apr 2025"
+        ]
+      ]
+    }
+  },
+  "qwen3": {
+    "freeze": {
+      "match": 14,
+      "total": 14,
+      "pct": 100,
+      "latency_s": 10.2,
+      "misses": []
+    },
+    "summary": {
+      "match": 51,
+      "total": 51,
+      "pct": 100,
+      "latency_s": 31.6,
+      "misses": []
+    },
+    "fastpath_icd": {
+      "match": 16,
+      "total": 17,
+      "pct": 94,
+      "latency_s": 10.4,
+      "misses": [
+        [
+          "mode",
+          "A",
+          "Stimulation"
+        ]
+      ]
+    },
+    "fastpath_pm": {
+      "match": 27,
+      "total": 27,
+      "pct": 100,
+      "latency_s": 14.7,
+      "misses": []
+    }
+  }
+}

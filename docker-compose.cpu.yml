@@ -1,0 +1,17 @@
+# CPU-only override — merge on top of docker-compose.api.yml
+#
+# Usage:
+#   docker compose -f docker-compose.api.yml -f docker-compose.cpu.yml up -d
+#
+# Note: CPU inference is ~5-10x slower but works without nvidia-container-toolkit.
+
+services:
+  ciedocr:
+    # Revert to default runtime (removes runtime: nvidia from base)
+    runtime: runc
+
+    # Force CPU device so the model doesn't try to use bfloat16
+    environment:
+      HF_HOME: /cache/huggingface
+      NVIDIA_VISIBLE_DEVICES: ""
+      FORCE_DEVICE: cpu

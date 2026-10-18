@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+*.pdf
+*.bak
+samples/
+results/
+.claude/
