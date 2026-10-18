@@ -30,9 +30,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 SCHEMA_VERSION = "1.0"
-ENGINE_VERSION = "0.2.0"          # per-vendor dispatch; PaddleOCR removed
+ENGINE_VERSION = "0.3.0"          # per-vendor dispatch + .bnk/.pdd/.pkg/Microport
 JOB_TTL_SECONDS = 3600
-SUPPORTED_VENDORS = ["biotronik", "ela_sorin", "boston_scientific", "abbott", "medtronic"]
+SUPPORTED_VENDORS = ["biotronik", "ela_sorin", "boston_scientific", "abbott", "medtronic", "microport"]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -89,22 +89,46 @@ def _get_vqa():
         return _vqa
 
 
+def _log_ext(log_path: str | None) -> str:
+    """Return lowercased extension of the log/sidecar file, or ''."""
+    if not log_path:
+        return ""
+    return os.path.splitext(log_path)[1].lower()
+
+
 def _dispatch(pdf_path: str, vendor_hint: str, log_path: str | None = None,
               hl7_path: str | None = None) -> dict:
     """Route to the correct per-vendor extractor (mirrors validate.py::run_sample)."""
     v = (vendor_hint or "").lower()
+    ext = _log_ext(log_path)
+
+    # ── Microport / Paceart XML ──────────────────────────────────────────
+    if "paceart" in v or (v == "microport" and ext == ".xml"):
+        from extractors.microport import extract
+        return extract(log_path or pdf_path)
+
+    # ── Biotronik ────────────────────────────────────────────────────────
     if "biotronik" in v:
         from extractors.biotronik import extract
         return extract(pdf_path)
-    if "sorin" in v or v.startswith("ela") or "microport" in v:
+
+    # ── ELA / Sorin / LivaNova / MicroPort CRM (PDF) ────────────────────
+    if "sorin" in v or v.startswith("ela") or "livanova" in v or "microport" in v:
         from extractors.ela_sorin import extract
         return extract(pdf_path)
+
+    # ── Boston Scientific ────────────────────────────────────────────────
     if "boston" in v or v == "bsc":
+        if ext == ".bnk":
+            from extractors.bsc_bnk import extract as bnk_extract
+            return bnk_extract(log_path)
         if hl7_path is not None:
             from extractors.bsc_sicd import extract as sicd_extract
             return sicd_extract(pdf_path, hl7_path)
         from extractors.bsc_crtd import extract
         return extract(pdf_path)
+
+    # ── Abbott / St. Jude ────────────────────────────────────────────────
     if "abbott" in v or "sjm" in v or "jude" in v:
         if log_path is not None:
             from extractors.abbott_log import extract as log_extract
@@ -112,13 +136,24 @@ def _dispatch(pdf_path: str, vendor_hint: str, log_path: str | None = None,
         from extractors.abbott_merlin import extract
         model, processor = _get_vqa()
         return extract(pdf_path, model, processor)
+
+    # ── Medtronic / Vitatron ─────────────────────────────────────────────
     if "medtronic" in v or "vitatron" in v:
-        # .26X/.V26 files are text — pdf_path is a temp file holding the raw bytes.
-        # The caller should pass the file with its original suffix via the log_path slot
-        # or send raw text. Accept either: if log_path is set use it; else use pdf_path.
+        if ext == ".pkg":
+            from extractors.medtronic_pkg import extract as pkg_extract
+            return pkg_extract(log_path)
+        if ext == ".pdd":
+            from extractors.medtronic_pdd import extract as pdd_extract
+            return pdd_extract(log_path)
+        if ext == ".xml":
+            from extractors.medtronic_pkg import extract_xml
+            with open(log_path, "r", encoding="utf-8") as f:
+                return extract_xml(f.read(), log_path)
+        # .26X/.V26 text files or fallback
         src = log_path if log_path else pdf_path
         from extractors.medtronic_2090 import extract
         return extract(src)
+
     raise UnsupportedVendor(vendor_hint or "(none)")
 
 
@@ -142,11 +177,11 @@ def _worker():
             job = _jobs.get(job_id)
             if not job:
                 continue
-            body, vendor_hint, log_bytes, hl7_bytes = job.pop("_payload")
+            body, vendor_hint, log_bytes, hl7_bytes, log_fname = job.pop("_payload")
             job["status"] = "running"
             job["updated_at"] = time.time()
         try:
-            envelope = _do_extract(body, vendor_hint, job_id, log_bytes, hl7_bytes)
+            envelope = _do_extract(body, vendor_hint, job_id, log_bytes, hl7_bytes, log_fname)
             with _jobs_lock:
                 j = _jobs.get(job_id)
                 if j:
@@ -211,18 +246,21 @@ def _page_count(pdf_bytes: bytes) -> int | None:
 
 def _do_extract(body: bytes, vendor_hint: str, request_id: str,
                 log_bytes: bytes | None = None,
-                hl7_bytes: bytes | None = None) -> dict:
+                hl7_bytes: bytes | None = None,
+                log_filename: str = "") -> dict:
     t0 = time.monotonic()
-    sha = hashlib.sha256(body).hexdigest()
+    sha = hashlib.sha256(body or log_bytes or b"").hexdigest()
     is_abbott = "abbott" in (vendor_hint or "").lower()
     uses_log = is_abbott and log_bytes is not None
+    log_ext = os.path.splitext(log_filename)[1].lower() if log_filename else ".log"
     with tempfile.NamedTemporaryFile(suffix=".pdf") as tf:
-        tf.write(body)
-        tf.flush()
+        if body:
+            tf.write(body)
+            tf.flush()
         log_tf = None
         hl7_tf = None
         if log_bytes is not None:
-            log_tf = tempfile.NamedTemporaryFile(suffix=".log", delete=False)
+            log_tf = tempfile.NamedTemporaryFile(suffix=log_ext or ".log", delete=False)
             log_tf.write(log_bytes)
             log_tf.flush()
             log_tf.close()
@@ -258,9 +296,11 @@ def _do_extract(body: bytes, vendor_hint: str, request_id: str,
             "name": "ciedocr",
             "version": ENGINE_VERSION,
             "extractor": (report.get("manufacturer") if isinstance(report, dict) else None) or vendor_hint,
-            "model": ("log" if uses_log else "qwen-vqa") if is_abbott else "pdfplumber",
+            "model": ("log" if uses_log else "qwen-vqa") if is_abbott
+                     else ("native" if (log_ext not in ("", ".log") and not body) else "pdfplumber"),
         },
-        "source": {"pages": _page_count(body), "sha256": sha, "bytes": len(body)},
+        "source": {"pages": _page_count(body) if body else None, "sha256": sha,
+                   "bytes": len(body or log_bytes or b"")},
         "processing_ms": int((time.monotonic() - t0) * 1000),
         "report": report,
         "warnings": [],
@@ -289,20 +329,25 @@ async def extract_endpoint(
     request_id = x_request_id or uuid.uuid4().hex
     ctype = (request.headers.get("content-type") or "").lower()
     log_bytes: bytes | None = None
-
+    log_filename: str = ""
     hl7_bytes: bytes | None = None
 
     if "multipart/form-data" in ctype:
-        # Multipart: fields 'pdf' (required), 'log' (optional, Abbott), 'hl7' (optional, BSC S-ICD)
+        # Multipart: 'pdf' (required unless 'log' carries a non-PDF primary file),
+        # 'log' (optional sidecar or primary for .bnk/.pdd/.pkg/.xml),
+        # 'hl7' (optional, BSC S-ICD)
         form = await request.form()
         pdf_part = form.get("pdf")
         log_part = form.get("log")
         hl7_part = form.get("hl7")
-        if pdf_part is None:
-            return _err(400, "missing_field", "multipart must include a 'pdf' field", request_id)
-        body = await pdf_part.read() if hasattr(pdf_part, "read") else pdf_part.encode()
+        if pdf_part is None and log_part is None:
+            return _err(400, "missing_field", "multipart must include a 'pdf' or 'log' field", request_id)
+        body = b""
+        if pdf_part is not None:
+            body = await pdf_part.read() if hasattr(pdf_part, "read") else pdf_part.encode()
         if log_part is not None:
             log_bytes = await log_part.read() if hasattr(log_part, "read") else log_part.encode()
+            log_filename = getattr(log_part, "filename", "") or ""
         if hl7_part is not None:
             hl7_bytes = await hl7_part.read() if hasattr(hl7_part, "read") else hl7_part.encode()
         vendor_hint = x_vendor_hint or str(form.get("vendor") or "")
@@ -313,9 +358,10 @@ async def extract_endpoint(
         return _err(415, "unsupported_media",
                     "send Content-Type: application/pdf or multipart/form-data", request_id)
 
-    err = _check_pdf(body, request_id)
-    if err is not None:
-        return err
+    if body:
+        err = _check_pdf(body, request_id)
+        if err is not None:
+            return err
 
     is_async = mode.lower() == "async" or (prefer or "").lower() == "respond-async"
 
@@ -327,7 +373,7 @@ async def extract_endpoint(
                 "updated_at": time.time(),
                 "result": None,
                 "error": None,
-                "_payload": (body, vendor_hint, log_bytes, hl7_bytes),
+                "_payload": (body, vendor_hint, log_bytes, hl7_bytes, log_filename),
             }
         _job_queue.put(request_id)
         return JSONResponse(status_code=202, content={
@@ -340,7 +386,7 @@ async def extract_endpoint(
     # synchronous
     try:
         envelope = await run_in_threadpool(
-            _do_extract, body, vendor_hint, request_id, log_bytes, hl7_bytes
+            _do_extract, body, vendor_hint, request_id, log_bytes, hl7_bytes, log_filename
         )
     except UnsupportedVendor as e:
         return _err(422, "unsupported_vendor", str(e), request_id)
