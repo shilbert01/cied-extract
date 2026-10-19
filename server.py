@@ -109,6 +109,16 @@ def _dispatch(pdf_path: str, vendor_hint: str, log_path: str | None = None,
 
     # ── Biotronik ────────────────────────────────────────────────────────
     if "biotronik" in v:
+        src = log_path if log_path else pdf_path
+        if src.lower().endswith(".xml"):
+            with open(src, "r", encoding="utf-8") as f:
+                head = f.read(500)
+            if "biotronik-ieee11073" in head or "BIOIEEE" in os.path.basename(src):
+                from extractors.biotronik_xml import extract as bio_xml_extract
+                return bio_xml_extract(src)
+            else:
+                from extractors.biotronik_biostd import extract as bio_biostd_extract
+                return bio_biostd_extract(src)
         from extractors.biotronik import extract
         return extract(pdf_path)
 
@@ -149,8 +159,12 @@ def _dispatch(pdf_path: str, vendor_hint: str, log_path: str | None = None,
             from extractors.medtronic_pkg import extract_xml
             with open(log_path, "r", encoding="utf-8") as f:
                 return extract_xml(f.read(), log_path)
-        # .26X/.V26 text files or fallback
+        # CareLink PDF: detect by content markers
         src = log_path if log_path else pdf_path
+        if src.lower().endswith(".pdf"):
+            from extractors.medtronic_carelink import extract as cl_extract
+            return cl_extract(src)
+        # .26X/.V26 text files or fallback
         from extractors.medtronic_2090 import extract
         return extract(src)
 

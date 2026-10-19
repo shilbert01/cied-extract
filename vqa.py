@@ -21,8 +21,11 @@ from transformers import (
     AutoProcessor,
     BitsAndBytesConfig,
     Qwen3VLForConditionalGeneration,
-    Qwen3_5ForConditionalGeneration,
 )
+try:
+    from transformers import Qwen3_5ForConditionalGeneration
+except ImportError:
+    Qwen3_5ForConditionalGeneration = None
 
 MODEL_ID     = "Qwen/Qwen3-VL-8B-Instruct"
 MODEL_ID_27B = os.environ.get("VQA_MODEL_27B", "Qwen/Qwen3.8-27B")
