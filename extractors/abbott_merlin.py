@@ -634,7 +634,7 @@ def detect_report_type(pdf_path: str | Path) -> str:
 
 # ── VQA inference ─────────────────────────────────────────────────────────────
 
-def _vqa(model, processor, image, prompt: str) -> str:
+def _vqa(model, processor, image, prompt: str, max_new_tokens: int = 1024) -> str:
     messages = [
         {
             "role": "user",
@@ -656,7 +656,7 @@ def _vqa(model, processor, image, prompt: str) -> str:
     with torch.no_grad():
         out = model.generate(
             **inputs,
-            max_new_tokens=1024,
+            max_new_tokens=max_new_tokens,
             suppress_tokens=[think_token_id] if isinstance(think_token_id, int) else None,
         )
     trimmed = out[:, inputs["input_ids"].shape[1]:]
@@ -786,6 +786,193 @@ def classify_report_type(model, processor, image) -> Optional[str]:
     return None
 
 
+# ── fast header-crop classification ──────────────────────────────────────────
+# Render only top 30% of the page and classify with max_new_tokens=20.
+# ~0.5s vs ~6-8s for the full-page VQA classification above.
+
+CLASSIFY_PROMPT_FAST = """\
+Look at this report page. Reply with ONLY one word — the report type:
+- fastpath_pm (FastPath pacemaker overview: Batterie/Testergebnisse/Parameter/Diagnostik, device is Schrittmacher)
+- fastpath_icd (FastPath ICD overview: same sections but device is ICD/Defibrillator, has VT/VF)
+- summary (Aveir DR LP leadless pacemaker — has RA+RV battery blocks, Testergeb., Stimulation & Wahr.)
+- freeze (FreezeReport/Ausschnitt — shows ECG traces and Schlüsselparameter table)
+- psa (PSA-Bericht — lead table with Elektrode/Hersteller/Modell columns, implant test results)
+- wrapup (Wrap-up Report — Batterie + Testergebnisse + Neue Programmierung, no Diagnostik)
+- parameters_icd (Parameter page — Modus & Sensor, Frequenzen, Intervalle tables, no battery section)
+- testergebnisse_icd (Testergebnisse ventr. Reizschwelle — ECG traces of threshold test)
+
+Type:"""
+
+
+def classify_report_type_fast(model, processor, image) -> Optional[str]:
+    """Classify by cropping top 30% of the page — ~0.5s instead of ~6-8s."""
+    w, h = image.size
+    crop = image.crop((0, 0, w, int(h * 0.30)))
+    raw = _vqa(model, processor, crop, CLASSIFY_PROMPT_FAST, max_new_tokens=20)
+    raw = raw.strip().lower()
+    for rt in ("testergebnisse_icd", "parameters_icd", "fastpath_icd",
+               "fastpath_pm", "summary", "freeze", "wrapup", "psa"):
+        if rt in raw:
+            return rt
+    return None
+
+
+# ── single-pass unified prompt ───────────────────────────────────────────────
+
+SCHEMA_UNIFIED = {
+    "report_type": "FastPathSummary | FreezeReport | SummaryReport | WrapupReport | PSAReport | ParameterReport",
+    "patient_name": None,
+    "followup_date": None,
+    "implant_date": None,
+    "device_model": None,
+    "device_serial": None,
+    "device": None,
+    "facility": None,
+    # Battery
+    "battery_voltage_v": None,
+    "battery_mag_freq_bpm": None,
+    "battery_remaining_pct": None,
+    "battery_eri": None,
+    "battery_current_ua": None,
+    "battery_longevity": None,
+    "battery_charging_time_s": None,
+    # Test results / sensing / impedance
+    "threshold_a_v": None,
+    "threshold_a_pw_ms": None,
+    "threshold_rv_v": None,
+    "threshold_rv_pw_ms": None,
+    "sensing_a_mv": None,
+    "sensing_rv_mv": None,
+    "impedance_a_ohm": None,
+    "impedance_rv_ohm": None,
+    "shock_impedance_ohm": None,
+    "impedance_lv_ohm": None,
+    # Leads (PSA / Parameter reports)
+    "lead_a_model": None,
+    "lead_a_serial": None,
+    "lead_a_implant_date": None,
+    "lead_rv_model": None,
+    "lead_rv_serial": None,
+    "lead_rv_implant_date": None,
+    # Programming
+    "mode": None,
+    "base_rate_bpm": None,
+    "upper_rate_bpm": None,
+    "av_paced_ms": None,
+    "av_sensed_ms": None,
+    # Stimulation
+    "autocapture_a": None,
+    "autocapture_rv": None,
+    "amplitude_a_v": None,
+    "amplitude_rv_v": None,
+    "pulse_width_a_ms": None,
+    "pulse_width_rv_ms": None,
+    "sense_ability_a": None,
+    "sense_ability_rv": None,
+    "sensitivity_a_mv": None,
+    "sensitivity_rv_mv": None,
+    # ICD zones
+    "vt_zone": None,
+    "vf_zone": None,
+    "therapy": None,
+    # Diagnostics
+    "stim_a_pct": None,
+    "stim_rv_pct": None,
+    "ams_episodes": None,
+    "mode_switch_pct": None,
+    "af_burden_pct": None,
+    "diagnostics_since": None,
+    "vt_vf_episodes": None,
+    # Freeze-specific
+    "max_sensor_rate_bpm": None,
+    "rate_hysteresis": None,
+    "vip": None,
+    "rate_adaptive_av": None,
+    "rate_adaptive_pvarp": None,
+    "vent_safety_pacing": None,
+    # PSA-specific
+    "threshold_a_ma": None,
+    "sensing_a_slew_vs": None,
+    "threshold_rv_ma": None,
+    "sensing_rv_slew_vs": None,
+}
+
+PROMPT_UNIFIED = """\
+You are a medical data extraction assistant. Extract ALL visible pacemaker/ICD \
+interrogation fields from this Abbott Merlin PCS report page.
+
+STEP 1 — Identify the report type from the page layout:
+- "FastPathSummary": compact single-page overview with Batterie + Testergebnisse + \
+Parameter + Diagnostikübersicht sections
+- "FreezeReport": titled "Ausschnitt", shows ECG traces + Schlüsselparameter table
+- "SummaryReport": Aveir™ DR LP device, has Batterieinformationen (RA+RV blocks), \
+Testergeb., Parameter, Stimulation & Wahr., Diagnostikübersicht
+- "WrapupReport": titled "Wrap-up™ Report", has Batterie + Testergebnisse + Parameter + \
+Neue Programmierung
+- "PSAReport": titled "PSA-Bericht", has lead table + Testergebnisse (Reizschw./Signalamplitude/Impedanz)
+- "ParameterReport": detailed programming tables (Modus & Sensor, Frequenzen, Intervalle)
+
+STEP 2 — Extract fields. Rules:
+- NUMERIC fields: number only, NO unit suffix. "60 min⁻¹" → "60", "2,5 V" → "2,5", \
+"550 Ω" → "550". Use German decimal comma.
+- Preserve ">" or "<" prefixes (e.g. ">95", "> 5 Jhr.").
+- TEXT fields (Aus, Ein, Auto, DDD, DDDR…): copy exactly as printed.
+- DATE fields: strip leading "Seit" — "Seit 3 Mär 2025" → "3 Mär 2025".
+- "Nicht durchgeführt" → return that exact string (NOT null).
+- null = field label is not present on this page at all.
+- Return ONLY the JSON — no markdown fences, no explanation.
+
+FIELD LOCATIONS:
+- Header: patient_name (top centre), followup_date (top-right corner, "d Mon yyyy"), \
+device_model (model number/code), device_serial (number after model), \
+device (full device line for Aveir™), facility (line starting "HZ"), \
+implant_date (for PSA: top-right; for others: "Datum der Implantation")
+- Batterie: battery_voltage_v ("Spannung"), battery_mag_freq_bpm ("Magnetfrequenz"), \
+battery_remaining_pct ("Verbleib. Kapazität"), battery_eri ("ERI"), \
+battery_current_ua ("Batteriestrom"), battery_longevity ("Laufzeit"), \
+battery_charging_time_s ("Letzte max. Aufladung")
+- Testergebnisse: threshold_*_v ("Reizschwelle" amplitude), threshold_*_pw_ms (pulse width), \
+sensing_*_mv ("Signalamplitude"), impedance_*_ohm ("Elektrodenimpedanz"), \
+shock_impedance_ohm (HV coil), sensing_*_slew_vs (V/s), threshold_*_ma (mA)
+- Leads (PSA/Parameter): lead_a_model, lead_a_serial, lead_a_implant_date (A row), \
+lead_rv_* (V/RV row)
+- Parameter: mode ("Betriebsart"), base_rate_bpm ("Grundfrequenz/GF"), \
+upper_rate_bpm ("Ob Grenzfr/MTR"), av_paced_ms ("AV stimuliert"), \
+av_sensed_ms ("Wahrg. AV-Int.")
+- Stimulation: amplitude_*_v ("Impulsamplitude"), pulse_width_*_ms ("Impulsdauer"), \
+autocapture_* ("ACap/AutoCapture"), sense_ability_* ("SenseAbility™"), \
+sensitivity_*_mv ("Empfindlichkeit/Sensitivität")
+- ICD zones: vt_zone, vf_zone ("Zonenkonfiguration"), therapy ("Therapie")
+- Diagnostik: stim_a_pct (AP%), stim_rv_pct (VP%), ams_episodes ("AMS-Episoden"), \
+mode_switch_pct ("Mode-Switch"), af_burden_pct ("AT/AF-Burden"), \
+diagnostics_since ("Seit:" date), vt_vf_episodes ("VT/VF-Episoden")
+- Freeze: max_sensor_rate_bpm, rate_hysteresis, vip ("VIP™"), \
+rate_adaptive_av, rate_adaptive_pvarp, vent_safety_pacing
+
+""" + json.dumps(SCHEMA_UNIFIED, ensure_ascii=False, indent=2)
+
+
+def extract_single_pass(
+    pdf_path: str | Path,
+    model=None,
+    processor=None,
+    dpi: int = 200,
+) -> dict:
+    pdf_path = Path(pdf_path)
+    if model is None or processor is None:
+        raise ValueError("model and processor must be provided")
+
+    images = pdf2image.convert_from_path(str(pdf_path), dpi=dpi, first_page=1, last_page=1)
+    raw = _vqa(model, processor, images[0], PROMPT_UNIFIED)
+    result = _parse_json(raw)
+    result = _postprocess(result)
+    result = {_KEY_RENAME.get(k, k): v for k, v in result.items()}
+    result["source_file"] = str(pdf_path)
+    result["manufacturer"] = "Abbott"
+    result["vqa_model"] = "Qwen3-VL-8B-Instruct"
+    return result
+
+
 # ── entry point ───────────────────────────────────────────────────────────────
 
 def _page_count(pdf_path: Path) -> int:
@@ -821,7 +1008,7 @@ def extract(
     if report_type is None:
         report_type = detect_report_type(pdf_path)
     if report_type is None:
-        report_type = classify_report_type(model, processor, image)
+        report_type = classify_report_type_fast(model, processor, image)
     if report_type is None:
         report_type = "summary"
 
@@ -833,7 +1020,7 @@ def extract(
             last_imgs = pdf2image.convert_from_path(
                 str(pdf_path), dpi=dpi, first_page=n, last_page=n
             )
-            last_type = classify_report_type(model, processor, last_imgs[0])
+            last_type = classify_report_type_fast(model, processor, last_imgs[0])
             if last_type == "wrapup":
                 image = last_imgs[0]
                 report_type = "wrapup"
@@ -848,7 +1035,7 @@ def extract(
             p2_imgs = pdf2image.convert_from_path(
                 str(pdf_path), dpi=dpi, first_page=2, last_page=2
             )
-            p2_type = classify_report_type(model, processor, p2_imgs[0])
+            p2_type = classify_report_type_fast(model, processor, p2_imgs[0])
             if p2_type in ("parameters_icd", "testergebnisse_icd", None):
                 # Extract threshold from page 1
                 raw_thr = _vqa(model, processor, image, PROMPT_TESTERGEBNISSE_RV)
