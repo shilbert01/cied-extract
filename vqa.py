@@ -213,10 +213,12 @@ def vqa(model, processor, image: Image.Image, prompt: str = None) -> str:
         return_tensors="pt",
     ).to(model.device)
 
+    think_token_id = processor.tokenizer.convert_tokens_to_ids("<think>")
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
             max_new_tokens=1280,
+            suppress_tokens=[think_token_id] if isinstance(think_token_id, int) else None,
         )
 
     return processor.batch_decode(

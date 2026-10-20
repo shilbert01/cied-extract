@@ -30,6 +30,7 @@ import pdf2image
 
 SCHEMA_FREEZE = {
     "report_type": "FreezeReport",
+    "patient_name": None,
     "followup_date": None,
     "device": None,
     "facility": None,
@@ -48,50 +49,56 @@ SCHEMA_FREEZE = {
 
 SCHEMA_FASTPATH_ICD = {
     "report_type": "FastPathSummary",
+    "patient_name": None,
     "followup_date": None,
     "device_model": None,
     "device_serial": None,
     "battery_eri": None,
     "battery_current_ua": None,
     "battery_remaining_pct": None,
-    "sensing_v": None,
-    "impedance_v": None,
-    "impedance_hv": None,
+    "sensing_rv_mv": None,
+    "impedance_rv_ohm": None,
+    "shock_impedance_ohm": None,
     "mode": None,
     "vt_zone": None,
     "vf_zone": None,
     "detection_params": None,
     "therapy": None,
-    "sense_ability_v": None,
-    "sensing_config_v": None,
+    "sense_ability_rv": None,
+    "sensing_config_rv": None,
     "vt_vf_episodes": None,
 }
 
 SCHEMA_FASTPATH_PM = {
     "report_type": "FastPathSummary",
+    "patient_name": None,
     "followup_date": None,
     "device_model": None,
     "device_serial": None,
     "battery_voltage_v": None,
     "battery_mag_freq_bpm": None,
     "battery_remaining_pct": None,
+    "sensing_a_mv": None,
+    "sensing_rv_mv": None,
+    "impedance_a_ohm": None,
+    "impedance_rv_ohm": None,
     "mode": None,
     "base_rate_bpm": None,
     "upper_rate_bpm": None,
     "av_paced_ms": None,
     "av_sensed_ms": None,
     "autocapture_a": None,
-    "autocapture_v": None,
+    "autocapture_rv": None,
     "amplitude_a_v": None,
-    "amplitude_v_v": None,
+    "amplitude_rv_v": None,
     "pulse_width_a_ms": None,
-    "pulse_width_v_ms": None,
+    "pulse_width_rv_ms": None,
     "sense_ability_a": None,
-    "sense_ability_v": None,
+    "sense_ability_rv": None,
     "sensitivity_a_mv": None,
-    "sensitivity_v_mv": None,
+    "sensitivity_rv_mv": None,
     "stim_a_pct": None,
-    "stim_v_pct": None,
+    "stim_rv_pct": None,
     "ams_episodes": None,
     "mode_switch_pct": None,
     "af_burden_pct": None,
@@ -159,6 +166,7 @@ SCHEMA_SUMMARY = {
 
 SCHEMA_WRAPUP_ICD = {
     "report_type": "WrapupReport",
+    "patient_name": None,
     "followup_date": None,
     "device_model": None,
     "device_serial": None,
@@ -192,6 +200,7 @@ SCHEMA_WRAPUP_ICD = {
 
 SCHEMA_PSA = {
     "report_type": "PSAReport",
+    "patient_name": None,
     # Device header (top-right / top-centre of page)
     "implant_date": None,       # date shown in top-right, e.g. "8 Jul 2026"
     "device_model": None,       # e.g. "2172"
@@ -221,6 +230,7 @@ SCHEMA_PSA = {
 
 SCHEMA_PARAMETER_ICD = {
     "report_type": "ParameterReport",
+    "patient_name": None,
     "followup_date": None,
     "device_model": None,        # e.g. "CDDRA300Q"
     "device_serial": None,       # e.g. "810187613"
@@ -228,9 +238,9 @@ SCHEMA_PARAMETER_ICD = {
     "lead_a_model": None,        # A Elektrode Modell
     "lead_a_serial": None,       # A Elektrode S/N
     "lead_a_implant_date": None,
-    "lead_v_model": None,        # V Elektrode Modell
-    "lead_v_serial": None,
-    "lead_v_implant_date": None,
+    "lead_rv_model": None,       # V Elektrode Modell
+    "lead_rv_serial": None,
+    "lead_rv_implant_date": None,
     "mode": None,                # Betriebsart e.g. "DDD"
     "base_rate_bpm": None,       # Grundfrequenz e.g. "60"
     "upper_rate_bpm": None,      # MTR e.g. "100"
@@ -238,8 +248,8 @@ SCHEMA_PARAMETER_ICD = {
     "av_sensed_ms": None,        # Wahrg. AV-Int. e.g. "150"
     "amplitude_a_v": None,       # Impulsamplitude A e.g. "3,125"
     "pulse_width_a_ms": None,    # Impulsdauer A e.g. "0,5"
-    "amplitude_v_v": None,       # Impulsamplitude V e.g. "3,0"
-    "pulse_width_v_ms": None,    # Impulsdauer V e.g. "1,0"
+    "amplitude_rv_v": None,      # Impulsamplitude V e.g. "3,0"
+    "pulse_width_rv_ms": None,   # Impulsdauer V e.g. "1,0"
 }
 
 SCHEMA_TESTERGEBNISSE_RV = {
@@ -272,6 +282,7 @@ this Abbott Merlin PCS FreezeReport (Ausschnitt) image.
 
 """ + _COMMON_RULES + """
 WHERE TO FIND EACH FIELD:
+- patient_name: top centre header, the patient's name (format "Lastname, Firstname")
 - followup_date: top-right corner (format "dd Mon yyyy")
 - device: centre top, line starting with "Aveir" — copy exactly
 - facility: centre top, line starting with "HZ"
@@ -296,6 +307,7 @@ Merlin PCS FastPath™ Übersicht report for an ICD device.
 
 """ + _COMMON_RULES + """
 WHERE TO FIND EACH FIELD:
+- patient_name: top centre header, the patient's name (format "Lastname, Firstname")
 - followup_date: top-right corner (format "d Mon yyyy" e.g. "4 Apr 2025")
 - device_model: top centre, the model code after "Entrant™ DR " (e.g. "CDDRA300Q")
 - device_serial: top centre, the number after the model code (e.g. "810131959")
@@ -305,9 +317,9 @@ WHERE TO FIND EACH FIELD:
   - battery_remaining_pct ← "Verbleib. Kapazität bis ERI" value (e.g. ">95")
 - Testergebnisse section (tests performed during follow-up — if a row shows
   "Nicht durchgeführt", return that exact string, NOT null):
-  - sensing_v ← "Signalamplitude" value for V row (e.g. "Nicht durchgeführt" or a number)
-  - impedance_v ← "Elektrodenimpedanz" value for V row
-  - impedance_hv ← "Elektrodenimpedanz" value for HV coil row
+  - sensing_rv_mv ← "Signalamplitude" value for V row (e.g. "Nicht durchgeführt" or a number)
+  - impedance_rv_ohm ← "Elektrodenimpedanz" value for V row
+  - shock_impedance_ohm ← "Elektrodenimpedanz" value for HV coil row
 - Parameter section (a table with label on the left, value on the right):
   - mode ← "Betriebsart" row — the value is a WORD like "Stimulation", "VVI",
     "DDI", never a single letter. Do not confuse it with the "A" or "V" column
@@ -317,8 +329,8 @@ WHERE TO FIND EACH FIELD:
   - detection_params ← "Detektionsparameter" row (often "Aus")
   - therapy ← row labelled "Therapie" or "Therapie (AUS)" (often "Aus")
 - Stimulation und Wahrnehmung section — find the V (ventricular) column:
-  - sense_ability_v ← "SenseAbility™" or "SenseAbility" row, V column (e.g. "Ein")
-  - sensing_config_v ← "Empfindlichkeit" row, V column (e.g. "Auto" or a number)
+  - sense_ability_rv ← "SenseAbility™" or "SenseAbility" row, V column (e.g. "Ein")
+  - sensing_config_rv ← "Empfindlichkeit" row, V column (e.g. "Auto" or a number)
 - Diagnostikübersicht section:
   - vt_vf_episodes ← "VT/VF-Episoden:" number (return as string, e.g. "0")
 
@@ -330,6 +342,7 @@ Merlin PCS FastPath™ Übersicht report for a pacemaker device.
 
 """ + _COMMON_RULES + """
 WHERE TO FIND EACH FIELD:
+- patient_name: top centre header, the patient's name (format "Lastname, Firstname")
 - followup_date: the report generation date shown in the TOP-RIGHT corner of the
   page, printed as part of the patient/device header (format "d Mon yyyy",
   e.g. "4 Apr 2025"). IGNORE any date that follows the word "Seit" — that is
@@ -341,8 +354,8 @@ WHERE TO FIND EACH FIELD:
   - battery_mag_freq_bpm ← "Magnetfrequenz" value (number before "min⁻¹")
   - battery_remaining_pct ← "Verbleib. Kapazität bis ERI" value
 - Testergebnisse section: fields are "Nicht durchgeführt" if no test was done
-  - sensing_a / sensing_v ← "Signalamplitude" for A and V rows
-  - impedance_a / impedance_v ← "Elektrodenimpedanz" for A and V rows
+  - sensing_a_mv / sensing_rv_mv ← "Signalamplitude" for A and V rows
+  - impedance_a_ohm / impedance_rv_ohm ← "Elektrodenimpedanz" for A and V rows
 - Parameter section:
   - mode ← "Betriebsart"
   - base_rate_bpm ← "Grundfrequenz (GF)" value (number before "min-1")
@@ -350,17 +363,17 @@ WHERE TO FIND EACH FIELD:
   - av_paced_ms ← "Stimuliertes AV-Intervall" value
   - av_sensed_ms ← "Wahrg. AV-Int." value
 - Stimulation und Wahrnehmung section — A column then V column:
-  - autocapture_a / autocapture_v ← "ACap™ Confirm/V. AutoCapture" row
-  - amplitude_a_v / amplitude_v_v ← "Impulsamplitude" row (number before "V")
-  - pulse_width_a_ms / pulse_width_v_ms ← "Impulsdauer" row (number before "ms")
-  - sense_ability_a / sense_ability_v ← "SenseAbility™" row
-  - sensitivity_a_mv / sensitivity_v_mv ← "Empfindlichkeit" row (number before "mV")
+  - autocapture_a / autocapture_rv ← "ACap™ Confirm/V. AutoCapture" row
+  - amplitude_a_v / amplitude_rv_v ← "Impulsamplitude" row (number before "V")
+  - pulse_width_a_ms / pulse_width_rv_ms ← "Impulsdauer" row (number before "ms")
+  - sense_ability_a / sense_ability_rv ← "SenseAbility™" row
+  - sensitivity_a_mv / sensitivity_rv_mv ← "Empfindlichkeit" row (number before "mV")
 - Diagnostikübersicht section (statistics since last follow-up):
   - diagnostics_since ← date shown after the word "Seit" — strip the "Seit" prefix
     (e.g. "Seit 3 Mär 2025" → "3 Mär 2025")
   - stim_a_pct ← stimulation percentage for atrium: look for "AP" or "A Stimulation"
     percentage — may show ">99" if very high (return the printed value, no % sign)
-  - stim_v_pct ← stimulation percentage for ventricle: look for "VP" or "V Stimulation"
+  - stim_rv_pct ← stimulation percentage for ventricle: look for "VP" or "V Stimulation"
     percentage (same format)
   - ams_episodes ← "AMS-Episoden" count (number as string, e.g. "0")
   - mode_switch_pct ← "Mode-Switch" percentage value (no % sign)
@@ -444,6 +457,7 @@ Merlin PCS Wrap-up™ Report page for an ICD or CRT-D device.
 
 """ + _COMMON_RULES + """
 WHERE TO FIND EACH FIELD:
+- patient_name: top centre header, the patient's name (format "Lastname, Firstname")
 - followup_date: top-right corner (format "d Mon yyyy" e.g. "4 Apr 2025")
 - device_model: top centre, model code (e.g. "3367-40QC" or "CDVRA300Q")
 - device_serial: top centre, number after the model code
@@ -484,6 +498,7 @@ this Abbott Merlin PCS PSA-Bericht (Pacing System Analyzer report).
 
 """ + _COMMON_RULES + """
 WHERE TO FIND EACH FIELD:
+- patient_name: top centre header, the patient's name (format "Lastname, Firstname")
 - implant_date: TOP-RIGHT corner of the page (format "d Mon yyyy", e.g. "8 Jul 2026")
 - device_model: TOP-CENTRE header, model number after "Endurity MRI™ " or other device name
   (e.g. "2172" from "Endurity MRI™ 2172 Schrittmacher 4130170")
@@ -516,6 +531,7 @@ from this Abbott Merlin PCS Parameter page (Seite 1 von N).
 
 """ + _COMMON_RULES + """
 WHERE TO FIND EACH FIELD:
+- patient_name: top centre header, the patient's name (format "Lastname, Firstname")
 - followup_date: TOP-RIGHT corner of the header (format "d Mon yyyy", e.g. "8 Jul 2026")
 - device_model: top-centre header, the model code AFTER "Entrant™ DR " or similar ICD name
   (e.g. "CDDRA300Q" from "Entrant™ DR CDDRA300Q ICD 810187613")
@@ -527,10 +543,10 @@ Aggregat table (rows: ICD, A Elektrode, V Elektrode — columns: Hersteller/Mode
   strip the length suffix (e.g. "/ 52 cm") and return just the model name
 - lead_a_serial ← S/N for "A Elektrode" row (e.g. "EDG165091")
 - lead_a_implant_date ← Impl.datum for "A Elektrode" row (e.g. "27 Mär 2026")
-- lead_v_model ← Modell for the "V Elektrode" row (e.g. "Durata™ 7122Q");
+- lead_rv_model ← Modell for the "V Elektrode" row (e.g. "Durata™ 7122Q");
   strip the length suffix and return just the model name
-- lead_v_serial ← S/N for "V Elektrode" row (e.g. "BPA182474")
-- lead_v_implant_date ← Impl.datum for "V Elektrode" row
+- lead_rv_serial ← S/N for "V Elektrode" row (e.g. "BPA182474")
+- lead_rv_implant_date ← Impl.datum for "V Elektrode" row
 
 Modus & Sensor section:
 - mode ← "Betriebsart" value (e.g. "DDD", "VVI")
@@ -546,9 +562,9 @@ Intervalle section:
 Stimulation und Wahrnehmung section — two columns (A and V):
 - amplitude_a_v ← "Impulsamplitude (Marge)" row, A column value, number only (e.g. "3,125")
 - pulse_width_a_ms ← "Impulsdauer" row, A column value, number only (e.g. "0,5")
-- amplitude_v_v ← "Impulsamplitude" row, V column value — if formatted as "X,X V (Y:1)"
+- amplitude_rv_v ← "Impulsamplitude" row, V column value — if formatted as "X,X V (Y:1)"
   extract only the amplitude before " V " (e.g. "3,0" from "3,0 V (2.4:1)")
-- pulse_width_v_ms ← "Impulsdauer" row, V column value, number only (e.g. "1,0")
+- pulse_width_rv_ms ← "Impulsdauer" row, V column value, number only (e.g. "1,0")
 
 """ + json.dumps(SCHEMA_PARAMETER_ICD, ensure_ascii=False, indent=2)
 
@@ -636,8 +652,13 @@ def _vqa(model, processor, image, prompt: str) -> str:
         return_dict=True,
         return_tensors="pt",
     ).to(model.device)
+    think_token_id = processor.tokenizer.convert_tokens_to_ids("<think>")
     with torch.no_grad():
-        out = model.generate(**inputs, max_new_tokens=1024)
+        out = model.generate(
+            **inputs,
+            max_new_tokens=1024,
+            suppress_tokens=[think_token_id] if isinstance(think_token_id, int) else None,
+        )
     trimmed = out[:, inputs["input_ids"].shape[1]:]
     return processor.batch_decode(trimmed, skip_special_tokens=True)[0]
 
@@ -675,9 +696,27 @@ _UNIT_SUFFIX = re.compile(
     r"|\s*%$"               # ">95 %" or ">95%" → ">95"
 )
 
+_KEY_RENAME = {
+    "amplitude_v_v": "amplitude_rv_v",
+    "pulse_width_v_ms": "pulse_width_rv_ms",
+    "sensitivity_v_mv": "sensitivity_rv_mv",
+    "autocapture_v": "autocapture_rv",
+    "sense_ability_v": "sense_ability_rv",
+    "sensing_config_v": "sensing_config_rv",
+    "stim_v_pct": "stim_rv_pct",
+    "sensing_v": "sensing_rv_mv",
+    "impedance_v": "impedance_rv_ohm",
+    "impedance_hv": "shock_impedance_ohm",
+    "lead_v_model": "lead_rv_model",
+    "lead_v_serial": "lead_rv_serial",
+    "lead_v_implant_date": "lead_rv_implant_date",
+}
+
+
 def _postprocess(result: dict) -> dict:
     cleaned = {}
     for k, v in result.items():
+        k = _KEY_RENAME.get(k, k)
         if isinstance(v, str):
             v = _UNIT_SUFFIX.sub("", v).strip()
             # Strip "Seit " prefix from date fields
@@ -759,7 +798,7 @@ def extract(
     pdf_path: str | Path,
     model=None,
     processor=None,
-    dpi: int = 300,
+    dpi: int = 200,
     report_type: Optional[str] = None,
 ) -> dict:
     """
@@ -851,6 +890,7 @@ def extract(
             if result.get(k) is None:
                 result[k] = v
 
+    result = {_KEY_RENAME.get(k, k): v for k, v in result.items()}
     result["source_file"] = str(pdf_path)
     result["manufacturer"] = "Abbott"
     result["vqa_model"] = "Qwen3-VL-8B-Instruct"
