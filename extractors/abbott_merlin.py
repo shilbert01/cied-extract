@@ -1188,20 +1188,20 @@ def extract(
             if result.get(k) is None:
                 result[k] = v
 
-    # Multi-page FastPath documents: the last page is often a Wrap-up™ Report
+    # Multi-page documents: scan remaining pages for a Wrap-up™ Report
     # with supplementary data (lead serials/models, patient DOB, battery details).
-    # Extract from it and merge fields that page 1 doesn't have.
+    # Merge fields that the primary page doesn't have.
     _SKIP_MERGE = {"report_type", "source_file", "manufacturer", "vqa_model",
                    "patient_name", "followup_date", "device_model", "device_serial"}
-    if report_type in ("fastpath_pm", "fastpath_icd"):
+    if report_type != "wrapup":
         n = _page_count(pdf_path)
-        if n > 1:
-            last_imgs = pdf2image.convert_from_path(
-                str(pdf_path), dpi=dpi, first_page=n, last_page=n
+        for pg in range(2, n + 1):
+            pg_imgs = pdf2image.convert_from_path(
+                str(pdf_path), dpi=dpi, first_page=pg, last_page=pg
             )
-            last_type = classify_report_type_fast(model, processor, last_imgs[0])
-            if last_type == "wrapup":
-                raw_wu = _vqa(model, processor, last_imgs[0], PROMPT_WRAPUP_ICD)
+            pg_type = classify_report_type_fast(model, processor, pg_imgs[0])
+            if pg_type == "wrapup":
+                raw_wu = _vqa(model, processor, pg_imgs[0], PROMPT_WRAPUP_ICD)
                 try:
                     wu = _parse_json(raw_wu)
                     wu = _postprocess(wu)
@@ -1213,6 +1213,7 @@ def extract(
                             result[k] = v
                 except Exception:
                     pass
+                break
 
     result = {_KEY_RENAME.get(k, k): v for k, v in result.items()}
     result["source_file"] = str(pdf_path)
