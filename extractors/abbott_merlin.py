@@ -323,7 +323,8 @@ this Abbott Merlin PCS FreezeReport (Ausschnitt) image.
 """ + _COMMON_RULES + """
 WHERE TO FIND EACH FIELD:
 - patient_name: top centre header, the patient's name (format "Lastname, Firstname")
-- followup_date: top-right corner (format "dd Mon yyyy")
+- followup_date: top-right corner (format "dd Mon yyyy", or "dd Mon yyyy HH:MM" \
+  if a time is shown)
 - device: centre top, line starting with "Aveir" — copy exactly
 - facility: centre top, line starting with "HZ"
 - Schlüsselparameter table (left column = label, right column = value):
@@ -348,7 +349,8 @@ Merlin PCS FastPath™ Übersicht report for an ICD device.
 """ + _COMMON_RULES + """
 WHERE TO FIND EACH FIELD:
 - patient_name: top centre header, the patient's name (format "Lastname, Firstname")
-- followup_date: top-right corner (format "d Mon yyyy" e.g. "4 Apr 2025")
+- followup_date: top-right corner (format "d Mon yyyy" e.g. "4 Apr 2025", or \
+  "d Mon yyyy HH:MM" if a time is shown, e.g. "4 Apr 2025 14:30")
 - device_model: top centre, the model code after "Entrant™ DR " (e.g. "CDDRA300Q")
 - device_serial: top centre, the number after the model code (e.g. "810131959")
 - Batterie section:
@@ -395,8 +397,9 @@ WHERE TO FIND EACH FIELD:
 - patient_name: top centre header, the patient's name (format "Lastname, Firstname")
 - followup_date: the report generation date shown in the TOP-RIGHT corner of the
   page, printed as part of the patient/device header (format "d Mon yyyy",
-  e.g. "4 Apr 2025"). IGNORE any date that follows the word "Seit" — that is
-  the diagnostics_since date, not the followup_date.
+  e.g. "4 Apr 2025", or "d Mon yyyy HH:MM" if a time is shown). IGNORE any
+  date that follows the word "Seit" — that is the diagnostics_since date, not
+  the followup_date.
 - device_model: top centre, model number after "Endurity MRI™ " (e.g. "2172")
 - device_serial: top centre, number after the model (e.g. "5153558")
 - Batterie section:
@@ -1024,12 +1027,15 @@ STEP 2 — Extract fields. Rules:
 - Preserve ">" or "<" prefixes (e.g. ">95", "> 5 Jhr.").
 - TEXT fields (Aus, Ein, Auto, DDD, DDDR…): copy exactly as printed.
 - DATE fields: strip leading "Seit" — "Seit 3 Mär 2025" → "3 Mär 2025".
+  For followup_date: include the time if visible (e.g. "4 Apr 2025 14:30" or \
+  "4 Apr 2025 14:30:00"). If only the date is shown, return just the date.
 - "Nicht durchgeführt" → return that exact string (NOT null).
 - null = field label is not present on this page at all.
 - Return ONLY the JSON — no markdown fences, no explanation.
 
 FIELD LOCATIONS:
-- Header: patient_name (top centre), followup_date (top-right corner, "d Mon yyyy"), \
+- Header: patient_name (top centre), followup_date (top-right corner, "d Mon yyyy" \
+  or "d Mon yyyy HH:MM" if time is shown), \
 device_model (model number/code), device_serial (number after model), \
 device (full device line for Aveir™), facility (line starting "HZ"), \
 implant_date (for PSA: top-right; for others: "Datum der Implantation")
