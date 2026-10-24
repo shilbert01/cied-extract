@@ -189,10 +189,23 @@ SCHEMA_SUMMARY = {
 SCHEMA_WRAPUP_ICD = {
     "report_type": "WrapupReport",
     "patient_name": None,
+    "patient_dob": None,             # Geburtsdatum e.g. "30 Sep 1939"
     "followup_date": None,
     "device_model": None,
     "device_serial": None,
+    "implant_date": None,            # Impl.datum for generator row
+    # Aggregat table — lead details
+    "lead_a_model": None,            # A Elektrode Modell e.g. "Tendril™ STS 2088TC / 52 cm"
+    "lead_a_serial": None,           # A Elektrode S/N e.g. "EEL580765"
+    "lead_a_implant_date": None,     # A Elektrode Impl.datum
+    "lead_rv_model": None,           # RV/V Elektrode Modell
+    "lead_rv_serial": None,          # RV/V Elektrode S/N
+    "lead_rv_implant_date": None,    # RV/V Elektrode Impl.datum
+    "lead_lv_model": None,           # LV Elektrode Modell (CRT only)
+    "lead_lv_serial": None,          # LV Elektrode S/N (CRT only)
+    "lead_lv_implant_date": None,    # LV Elektrode Impl.datum (CRT only)
     # Batterie section
+    "battery_voltage_v": None,       # Spannung e.g. "2,96"
     "battery_longevity": None,       # Laufzeit e.g. "1,5 Jahre"
     "battery_charging_time_s": None, # Letzte max. Aufladung e.g. "9,4"
     "battery_current_ua": None,      # Batteriestrom e.g. "25"
@@ -203,8 +216,12 @@ SCHEMA_WRAPUP_ICD = {
     "threshold_a_pw_ms": None,       # Reizschwelle A pulse width e.g. "0,4"
     "sensing_a_mv": None,            # Signalamplitude A e.g. "2,1"
     "impedance_a_ohm": None,         # Elektrodenimpedanz A e.g. "600"
+    "threshold_rv_v": None,          # Reizschwelle RV amplitude e.g. "0,5"
+    "threshold_rv_pw_ms": None,      # Reizschwelle RV pulse width e.g. "0,4"
     "sensing_rv_mv": None,           # Signalamplitude RV e.g. "11,8"
     "impedance_rv_ohm": None,        # Elektrodenimpedanz RV e.g. "1175"
+    "threshold_lv_v": None,          # Reizschwelle LV amplitude e.g. "1,25"
+    "threshold_lv_pw_ms": None,      # Reizschwelle LV pulse width e.g. "0,4"
     "sensing_lv_mv": None,           # Signalamplitude LV (CRT devices) e.g. "12,0"
     "impedance_lv_ohm": None,        # Elektrodenimpedanz LV e.g. "940"
     "impedance_hv_ohm": None,        # HV coil impedance e.g. "74"
@@ -500,34 +517,60 @@ Diagnostikübersicht section (left block):
 
 PROMPT_WRAPUP_ICD = """\
 You are a medical data extraction assistant. Extract fields from this Abbott \
-Merlin PCS Wrap-up™ Report page for an ICD or CRT-D device.
+Merlin PCS Wrap-up™ Report page.
 
 """ + _COMMON_RULES + """
 WHERE TO FIND EACH FIELD:
 - patient_name: top centre header, the patient's name (format "Lastname, Firstname")
 - followup_date: top-right corner (format "d Mon yyyy" e.g. "4 Apr 2025")
-- device_model: top centre, model code (e.g. "3367-40QC" or "CDVRA300Q")
+- device_model: top centre, model code (e.g. "3367-40QC" or "3562")
 - device_serial: top centre, number after the model code
-- Batterie section:
+
+Patient section:
+  - patient_dob ← "Geburtsdatum" value (e.g. "30 Sep 1939"); null if not shown
+
+Aggregat table (rows: CRT-P/CRT-D/ICD/PM, A Elektrode, RV/V Elektrode, LV Elektrode):
+  Columns are: Hersteller | Modell | S/N | Impl.datum
+  - implant_date ← Impl.datum for the generator row (first row, e.g. "7 Jul 2026")
+  - lead_a_model ← Modell for the "A Elektrode" row (e.g. "Tendril™ STS 2088TC / 52 cm")
+  - lead_a_serial ← S/N for "A Elektrode" row (e.g. "EEL580765")
+  - lead_a_implant_date ← Impl.datum for "A Elektrode" row
+  - lead_rv_model ← Modell for the "RV Elektrode" or "V Elektrode" row
+  - lead_rv_serial ← S/N for "RV Elektrode" or "V Elektrode" row
+  - lead_rv_implant_date ← Impl.datum for RV/V Elektrode row
+  - lead_lv_model ← Modell for the "LV Elektrode" row (CRT devices only; null if absent)
+  - lead_lv_serial ← S/N for "LV Elektrode" row (null if absent)
+  - lead_lv_implant_date ← Impl.datum for LV Elektrode row (null if absent)
+
+Batterie section:
+  - battery_voltage_v ← "Spannung" value (number before "V", e.g. "2,96")
   - battery_longevity ← "Laufzeit" value WITH unit (e.g. "1,5 Jahre")
   - battery_charging_time_s ← "Letzte max. Aufladung" value (number before "s")
   - battery_current_ua ← "Batteriestrom" value (number before "uA")
   - battery_remaining_pct ← "Verbleib. Kapazität bis ERI" value (number before "%")
   - battery_eri ← "ERI" value (preserve "> " prefix e.g. "> 5 Jhr.")
-- Testergebnisse section (rows for A lead, RV lead, LV lead, HV coil):
-  - threshold_a_v ← atrial "Reizschwelle" amplitude in V (number only; or
-    "Nicht durchgeführt" if not tested)
-  - threshold_a_pw_ms ← atrial "Reizschwelle" pulse width in ms (number after "@";
-    null if threshold not performed)
-  - sensing_a_mv ← "Signalamplitude" for A row (number; "Nicht durchgeführt" if not tested)
-  - impedance_a_ohm ← "Elektrodenimpedanz" for A row (number before "Ω")
-  - sensing_rv_mv ← "Signalamplitude" for RV row (number)
-  - impedance_rv_ohm ← "Elektrodenimpedanz" for RV row (number)
-  - sensing_lv_mv ← "Signalamplitude" for LV row (number; null if no LV lead)
-  - impedance_lv_ohm ← "Elektrodenimpedanz" for LV row (number; null if no LV lead)
-  - impedance_hv_ohm ← HV coil impedance value (number; labelled "HV" or "HV Impedanz")
-- Parameter section:
-  - mode ← "Betriebsart" value (e.g. "DDD", "VVI", "DDI")
+
+Testergebnisse section — rows for each lead (A, RV, LV) and HV coil:
+  Each lead row shows: Reizschw. (threshold) | Signalamplitude (sensing) | Elektrodenimpedanz
+  The threshold format is "X,XXV @ Y,Yms (config)" — extract amplitude and pulse width separately.
+  - threshold_a_v ← A row Reizschwelle amplitude (number before "V"; "Nicht durchgeführt" if not tested)
+  - threshold_a_pw_ms ← A row Reizschwelle pulse width (number after "@" before "ms")
+  - sensing_a_mv ← A row Signalamplitude (number; "Nicht durchgeführt" if not tested)
+  - impedance_a_ohm ← A row Elektrodenimpedanz (number before "Ω")
+  - threshold_rv_v ← RV row Reizschwelle amplitude
+  - threshold_rv_pw_ms ← RV row Reizschwelle pulse width
+  - sensing_rv_mv ← RV row Signalamplitude
+  - impedance_rv_ohm ← RV row Elektrodenimpedanz
+  - threshold_lv_v ← LV row Reizschwelle amplitude (null if no LV lead)
+  - threshold_lv_pw_ms ← LV row Reizschwelle pulse width (null if no LV lead)
+  - sensing_lv_mv ← LV row Signalamplitude (null if no LV lead)
+  - impedance_lv_ohm ← LV row Elektrodenimpedanz (null if no LV lead)
+  - impedance_hv_ohm ← HV coil impedance (number; null if no HV coil)
+  IMPORTANT: If the report shows only RV and LV rows (no A row), do NOT put LV values
+  into the _a_ fields — use _rv_ and _lv_ prefixes matching the row labels.
+
+Parameter section:
+  - mode ← "Betriebsart" value (e.g. "DDD", "VVI", "VVIR")
   - base_rate_bpm ← "GF" or "Grundfrequenz" value (number only)
   - upper_rate_bpm ← "MTR" value (number only)
   - av_paced_ms ← "Stimuliertes AV-Intervall" or "AV stimuliert" value (number)
@@ -535,7 +578,8 @@ WHERE TO FIND EACH FIELD:
   - vt_zone ← lowest VT detection rate (number from "VT-1:" or "VT:" label, bpm)
   - vf_zone ← VF detection rate (number from "VF:" label, bpm)
   - therapy ← "Therapie" status (e.g. "Aus", "Ein")
-- Neue Programmierung section (changes made at this visit):
+
+Neue Programmierung section (changes made at this visit):
   - new_programming ← copy text summarising what was changed today (null if absent)
 
 """ + json.dumps(SCHEMA_WRAPUP_ICD, ensure_ascii=False, indent=2)
@@ -898,13 +942,18 @@ SCHEMA_UNIFIED = {
     "impedance_rv_ohm": None,
     "impedance_lv_ohm": None,
     "shock_impedance_ohm": None,
-    # Leads (PSA / Parameter reports)
+    # Leads (PSA / Parameter / Wrap-up reports)
     "lead_a_model": None,
     "lead_a_serial": None,
     "lead_a_implant_date": None,
     "lead_rv_model": None,
     "lead_rv_serial": None,
     "lead_rv_implant_date": None,
+    "lead_lv_model": None,
+    "lead_lv_serial": None,
+    "lead_lv_implant_date": None,
+    # Patient
+    "patient_dob": None,
     # Programming
     "mode": None,
     "base_rate_bpm": None,
@@ -993,8 +1042,9 @@ sensing_*_mv ("Signalamplitude"), impedance_*_ohm ("Elektrodenimpedanz"), \
 shock_impedance_ohm (HV coil), sensing_*_slew_vs (V/s), threshold_*_ma (mA). \
 CRT devices have A, RV, and LV rows — use _a_, _rv_, _lv_ suffixes. If a report \
 shows only RV and LV (no A), do NOT put LV values into _a_ fields.
-- Leads (PSA/Parameter): lead_a_model, lead_a_serial, lead_a_implant_date (A row), \
-lead_rv_* (V/RV row)
+- Patient: patient_dob ← "Geburtsdatum" value (e.g. "30 Sep 1939"); null if not shown
+- Leads (PSA/Parameter/Wrap-up): lead_a_model, lead_a_serial, lead_a_implant_date (A row), \
+lead_rv_* (V/RV row), lead_lv_* (LV row, CRT devices only; null if absent)
 - Parameter: mode ("Betriebsart"), base_rate_bpm ("Grundfrequenz/GF"), \
 upper_rate_bpm ("Ob Grenzfr/MTR"), av_paced_ms ("AV stimuliert"), \
 av_sensed_ms ("Wahrg. AV-Int.")
@@ -1137,6 +1187,32 @@ def extract(
             result.setdefault(k, v)
             if result.get(k) is None:
                 result[k] = v
+
+    # Multi-page FastPath documents: the last page is often a Wrap-up™ Report
+    # with supplementary data (lead serials/models, patient DOB, battery details).
+    # Extract from it and merge fields that page 1 doesn't have.
+    _SKIP_MERGE = {"report_type", "source_file", "manufacturer", "vqa_model",
+                   "patient_name", "followup_date", "device_model", "device_serial"}
+    if report_type in ("fastpath_pm", "fastpath_icd"):
+        n = _page_count(pdf_path)
+        if n > 1:
+            last_imgs = pdf2image.convert_from_path(
+                str(pdf_path), dpi=dpi, first_page=n, last_page=n
+            )
+            last_type = classify_report_type_fast(model, processor, last_imgs[0])
+            if last_type == "wrapup":
+                raw_wu = _vqa(model, processor, last_imgs[0], PROMPT_WRAPUP_ICD)
+                try:
+                    wu = _parse_json(raw_wu)
+                    wu = _postprocess(wu)
+                    wu = {_KEY_RENAME.get(k, k): v for k, v in wu.items()}
+                    for k, v in wu.items():
+                        if k in _SKIP_MERGE or v is None:
+                            continue
+                        if result.get(k) is None:
+                            result[k] = v
+                except Exception:
+                    pass
 
     result = {_KEY_RENAME.get(k, k): v for k, v in result.items()}
     result["source_file"] = str(pdf_path)
