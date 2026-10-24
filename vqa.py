@@ -310,8 +310,6 @@ def main():
     p.add_argument("--verbose", action="store_true", help="Print raw model response")
     p.add_argument("--compare-json", metavar="FILE",
                    help="Compare against an existing extractor JSON file")
-    p.add_argument("--compare", action="store_true",
-                   help="Re-run PaddleOCR+regex and compare (slow, may produce loops)")
     args = p.parse_args()
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -339,17 +337,6 @@ def main():
         ref = json.loads(Path(args.compare_json).read_text())
         ref.pop("raw_ocr_pages", None)
         compare(result, ref)
-    elif args.compare:
-        import extractor, ocr_engine
-        print("\nRunning PaddleOCR + regex for comparison …")
-        engine = ocr_engine.OCREngine(
-            model_id="PaddlePaddle/PaddleOCR-VL-1.6", device=device
-        )
-        ocr_pages = engine.ocr_pdf(args.pdf, dpi=args.dpi)
-        regex_report = extractor.extract(ocr_pages, source_file=args.pdf)
-        regex_dict = regex_report.to_dict()
-        regex_dict.pop("raw_ocr_pages", None)
-        compare(result, regex_dict)
 
 
 if __name__ == "__main__":

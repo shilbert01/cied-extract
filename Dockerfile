@@ -1,7 +1,7 @@
-# CiedOCR — pacemaker report OCR service
-# Build:   docker build -t ciedocr .
-# Run GPU: docker run --gpus all -v /path/to/pdfs:/data ciedocr /data/report.pdf
-# Run CPU: docker run -v /path/to/pdfs:/data ciedocr /data/report.pdf --device cpu
+# cied-extract — pacemaker report extraction service
+# Build:   docker build -t cied-extract .
+# Run GPU: docker run --gpus all -v /path/to/pdfs:/data cied-extract /data/report.pdf
+# Run CPU: docker run -v /path/to/pdfs:/data cied-extract /data/report.pdf --device cpu
 
 FROM pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime
 

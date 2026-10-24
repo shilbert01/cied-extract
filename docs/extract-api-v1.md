@@ -1,8 +1,8 @@
-# CIEDOcr Extraction API — v1 (contract)
+# CIED-Extract API — v1 (contract)
 
-Status: **DRAFT** · Owner: CiedOCR service · Consumers: pacemaker central Pi (now), SaaS tenants (future)
+Status: **DRAFT** · Owner: CIED-Extract service · Consumers: pacemaker central Pi (now), SaaS tenants (future)
 
-The contract both sides build against. CiedOCR becomes a **stateless HTTP extraction
+The contract both sides build against. CIED-Extract is a **stateless HTTP extraction
 service**: PDF in → structured `PacemakerReport` JSON out, retains nothing. The current
 CLI (`main.py`) stays as a dev/batch tool; this API wraps the same `ocr_engine` +
 `extractor` code with the model **loaded once at startup**, not per request.
@@ -47,7 +47,7 @@ Extract structured data from one report PDF.
   "request_id": "b1f2...",
   "status": "ok",                     // see status values below
   "engine": {
-    "name": "ciedocr",
+    "name": "cied-extract",
     "version": "0.3.0",
     "model": "PaddlePaddle/PaddleOCR-VL-1.6",
     "device": "cuda"

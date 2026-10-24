@@ -56,8 +56,14 @@ SCHEMA_FASTPATH_ICD = {
     "battery_eri": None,
     "battery_current_ua": None,
     "battery_remaining_pct": None,
+    "threshold_rv_v": None,
+    "threshold_rv_pw_ms": None,
     "sensing_rv_mv": None,
     "impedance_rv_ohm": None,
+    "threshold_lv_v": None,
+    "threshold_lv_pw_ms": None,
+    "sensing_lv_mv": None,
+    "impedance_lv_ohm": None,
     "shock_impedance_ohm": None,
     "mode": None,
     "vt_zone": None,
@@ -66,6 +72,8 @@ SCHEMA_FASTPATH_ICD = {
     "therapy": None,
     "sense_ability_rv": None,
     "sensing_config_rv": None,
+    "sense_ability_lv": None,
+    "sensing_config_lv": None,
     "vt_vf_episodes": None,
 }
 
@@ -78,10 +86,18 @@ SCHEMA_FASTPATH_PM = {
     "battery_voltage_v": None,
     "battery_mag_freq_bpm": None,
     "battery_remaining_pct": None,
+    "threshold_a_v": None,
+    "threshold_a_pw_ms": None,
     "sensing_a_mv": None,
-    "sensing_rv_mv": None,
     "impedance_a_ohm": None,
+    "threshold_rv_v": None,
+    "threshold_rv_pw_ms": None,
+    "sensing_rv_mv": None,
     "impedance_rv_ohm": None,
+    "threshold_lv_v": None,
+    "threshold_lv_pw_ms": None,
+    "sensing_lv_mv": None,
+    "impedance_lv_ohm": None,
     "mode": None,
     "base_rate_bpm": None,
     "upper_rate_bpm": None,
@@ -89,16 +105,22 @@ SCHEMA_FASTPATH_PM = {
     "av_sensed_ms": None,
     "autocapture_a": None,
     "autocapture_rv": None,
+    "autocapture_lv": None,
     "amplitude_a_v": None,
     "amplitude_rv_v": None,
+    "amplitude_lv_v": None,
     "pulse_width_a_ms": None,
     "pulse_width_rv_ms": None,
+    "pulse_width_lv_ms": None,
     "sense_ability_a": None,
     "sense_ability_rv": None,
+    "sense_ability_lv": None,
     "sensitivity_a_mv": None,
     "sensitivity_rv_mv": None,
+    "sensitivity_lv_mv": None,
     "stim_a_pct": None,
     "stim_rv_pct": None,
+    "stim_lv_pct": None,
     "ams_episodes": None,
     "mode_switch_pct": None,
     "af_burden_pct": None,
@@ -183,6 +205,7 @@ SCHEMA_WRAPUP_ICD = {
     "impedance_a_ohm": None,         # Elektrodenimpedanz A e.g. "600"
     "sensing_rv_mv": None,           # Signalamplitude RV e.g. "11,8"
     "impedance_rv_ohm": None,        # Elektrodenimpedanz RV e.g. "1175"
+    "sensing_lv_mv": None,           # Signalamplitude LV (CRT devices) e.g. "12,0"
     "impedance_lv_ohm": None,        # Elektrodenimpedanz LV e.g. "940"
     "impedance_hv_ohm": None,        # HV coil impedance e.g. "74"
     # Parameter section
@@ -317,8 +340,15 @@ WHERE TO FIND EACH FIELD:
   - battery_remaining_pct ← "Verbleib. Kapazität bis ERI" value (e.g. ">95")
 - Testergebnisse section (tests performed during follow-up — if a row shows
   "Nicht durchgeführt", return that exact string, NOT null):
-  - sensing_rv_mv ← "Signalamplitude" value for V row (e.g. "Nicht durchgeführt" or a number)
-  - impedance_rv_ohm ← "Elektrodenimpedanz" value for V row
+  For each lead row (RV, and LV if CRT-D), extract three measurements:
+  - threshold_rv_v ← "Reizschwelle" amplitude for RV row (number before "V", e.g. "1,75")
+  - threshold_rv_pw_ms ← "Reizschwelle" pulse width for RV row (number after "@" before "ms", e.g. "0,5")
+  - sensing_rv_mv ← "Signalamplitude" value for RV row (e.g. "Nicht durchgeführt" or a number)
+  - impedance_rv_ohm ← "Elektrodenimpedanz" value for RV row
+  - threshold_lv_v ← "Reizschwelle" amplitude for LV row (CRT-D; null if no LV lead)
+  - threshold_lv_pw_ms ← "Reizschwelle" pulse width for LV row (null if no LV lead)
+  - sensing_lv_mv ← "Signalamplitude" value for LV row (CRT-D; null if no LV lead)
+  - impedance_lv_ohm ← "Elektrodenimpedanz" value for LV row (null if no LV lead)
   - shock_impedance_ohm ← "Elektrodenimpedanz" value for HV coil row
 - Parameter section (a table with label on the left, value on the right):
   - mode ← "Betriebsart" row — the value is a WORD like "Stimulation", "VVI",
@@ -328,9 +358,12 @@ WHERE TO FIND EACH FIELD:
   - vf_zone ← "Zonenkonfiguration" row, VF column (often "Aus")
   - detection_params ← "Detektionsparameter" row (often "Aus")
   - therapy ← row labelled "Therapie" or "Therapie (AUS)" (often "Aus")
-- Stimulation und Wahrnehmung section — find the V (ventricular) column:
-  - sense_ability_rv ← "SenseAbility™" or "SenseAbility" row, V column (e.g. "Ein")
-  - sensing_config_rv ← "Empfindlichkeit" row, V column (e.g. "Auto" or a number)
+- Stimulation und Wahrnehmung section — find the RV (ventricular) column,
+  and the LV column if present (CRT-D devices have A, RV, LV):
+  - sense_ability_rv ← "SenseAbility™" or "SenseAbility" row, RV/V column (e.g. "Ein")
+  - sensing_config_rv ← "Empfindlichkeit" row, RV/V column (e.g. "Auto" or a number)
+  - sense_ability_lv ← "SenseAbility™" row, LV column (null if no LV column)
+  - sensing_config_lv ← "Empfindlichkeit" row, LV column (null if no LV column)
 - Diagnostikübersicht section:
   - vt_vf_episodes ← "VT/VF-Episoden:" number (return as string, e.g. "0")
 
@@ -353,28 +386,42 @@ WHERE TO FIND EACH FIELD:
   - battery_voltage_v ← "Spannung" value (e.g. "3,08")
   - battery_mag_freq_bpm ← "Magnetfrequenz" value (number before "min⁻¹")
   - battery_remaining_pct ← "Verbleib. Kapazität bis ERI" value
-- Testergebnisse section: fields are "Nicht durchgeführt" if no test was done
-  - sensing_a_mv / sensing_rv_mv ← "Signalamplitude" for A and V rows
-  - impedance_a_ohm / impedance_rv_ohm ← "Elektrodenimpedanz" for A and V rows
+- Testergebnisse section: fields are "Nicht durchgeführt" if no test was done.
+  Dual-chamber devices (DR) have A and V rows. CRT devices (CRT-P) have A, RV,
+  and LV rows — map them to the _a_, _rv_, _lv_ fields respectively.
+  For each lead, extract three measurements:
+  - threshold_a_v / threshold_rv_v / threshold_lv_v ← "Reizschwelle" amplitude
+    (number before "V", e.g. "0,75"; or "Nicht durchgeführt")
+  - threshold_a_pw_ms / threshold_rv_pw_ms / threshold_lv_pw_ms ← "Reizschwelle"
+    pulse width (number after "@" before "ms", e.g. "0,4"; null if threshold not performed)
+  - sensing_a_mv / sensing_rv_mv / sensing_lv_mv ← "Signalamplitude" for A, RV, LV rows
+  - impedance_a_ohm / impedance_rv_ohm / impedance_lv_ohm ← "Elektrodenimpedanz" for A, RV, LV rows
+  IMPORTANT: if the report shows only RV and LV columns (no A column), use
+  the _rv_ and _lv_ fields. Do NOT put LV values into the _a_ fields.
 - Parameter section:
   - mode ← "Betriebsart"
   - base_rate_bpm ← "Grundfrequenz (GF)" value (number before "min-1")
   - upper_rate_bpm ← "Ob Grenzfr MTR" value
   - av_paced_ms ← "Stimuliertes AV-Intervall" value
   - av_sensed_ms ← "Wahrg. AV-Int." value
-- Stimulation und Wahrnehmung section — A column then V column:
-  - autocapture_a / autocapture_rv ← "ACap™ Confirm/V. AutoCapture" row
-  - amplitude_a_v / amplitude_rv_v ← "Impulsamplitude" row (number before "V")
-  - pulse_width_a_ms / pulse_width_rv_ms ← "Impulsdauer" row (number before "ms")
-  - sense_ability_a / sense_ability_rv ← "SenseAbility™" row
-  - sensitivity_a_mv / sensitivity_rv_mv ← "Empfindlichkeit" row (number before "mV")
+- Stimulation und Wahrnehmung section — columns vary by device type:
+  Dual-chamber (DR): A column then V column.
+  CRT (CRT-P): A column, RV column, LV column.
+  If only two columns are shown and the device is a CRT, they are RV and LV
+  (not A and RV). Map each column to its correct _a_, _rv_, or _lv_ field.
+  - autocapture_a / autocapture_rv / autocapture_lv ← "ACap™ Confirm/V. AutoCapture" row
+  - amplitude_a_v / amplitude_rv_v / amplitude_lv_v ← "Impulsamplitude" row (number before "V")
+  - pulse_width_a_ms / pulse_width_rv_ms / pulse_width_lv_ms ← "Impulsdauer" row (number before "ms")
+  - sense_ability_a / sense_ability_rv / sense_ability_lv ← "SenseAbility™" row
+  - sensitivity_a_mv / sensitivity_rv_mv / sensitivity_lv_mv ← "Empfindlichkeit" row (number before "mV")
 - Diagnostikübersicht section (statistics since last follow-up):
   - diagnostics_since ← date shown after the word "Seit" — strip the "Seit" prefix
     (e.g. "Seit 3 Mär 2025" → "3 Mär 2025")
   - stim_a_pct ← stimulation percentage for atrium: look for "AP" or "A Stimulation"
     percentage — may show ">99" if very high (return the printed value, no % sign)
-  - stim_rv_pct ← stimulation percentage for ventricle: look for "VP" or "V Stimulation"
+  - stim_rv_pct ← stimulation percentage for RV: look for "VP" or "V Stimulation"
     percentage (same format)
+  - stim_lv_pct ← stimulation percentage for LV (CRT devices; null if not present)
   - ams_episodes ← "AMS-Episoden" count (number as string, e.g. "0")
   - mode_switch_pct ← "Mode-Switch" percentage value (no % sign)
   - af_burden_pct ← "AT/AF-Burden" percentage value (no % sign)
@@ -476,6 +523,7 @@ WHERE TO FIND EACH FIELD:
   - impedance_a_ohm ← "Elektrodenimpedanz" for A row (number before "Ω")
   - sensing_rv_mv ← "Signalamplitude" for RV row (number)
   - impedance_rv_ohm ← "Elektrodenimpedanz" for RV row (number)
+  - sensing_lv_mv ← "Signalamplitude" for LV row (number; null if no LV lead)
   - impedance_lv_ohm ← "Elektrodenimpedanz" for LV row (number; null if no LV lead)
   - impedance_hv_ohm ← HV coil impedance value (number; labelled "HV" or "HV Impedanz")
 - Parameter section:
@@ -841,12 +889,15 @@ SCHEMA_UNIFIED = {
     "threshold_a_pw_ms": None,
     "threshold_rv_v": None,
     "threshold_rv_pw_ms": None,
+    "threshold_lv_v": None,
+    "threshold_lv_pw_ms": None,
     "sensing_a_mv": None,
     "sensing_rv_mv": None,
+    "sensing_lv_mv": None,
     "impedance_a_ohm": None,
     "impedance_rv_ohm": None,
-    "shock_impedance_ohm": None,
     "impedance_lv_ohm": None,
+    "shock_impedance_ohm": None,
     # Leads (PSA / Parameter reports)
     "lead_a_model": None,
     "lead_a_serial": None,
@@ -863,14 +914,19 @@ SCHEMA_UNIFIED = {
     # Stimulation
     "autocapture_a": None,
     "autocapture_rv": None,
+    "autocapture_lv": None,
     "amplitude_a_v": None,
     "amplitude_rv_v": None,
+    "amplitude_lv_v": None,
     "pulse_width_a_ms": None,
     "pulse_width_rv_ms": None,
+    "pulse_width_lv_ms": None,
     "sense_ability_a": None,
     "sense_ability_rv": None,
+    "sense_ability_lv": None,
     "sensitivity_a_mv": None,
     "sensitivity_rv_mv": None,
+    "sensitivity_lv_mv": None,
     # ICD zones
     "vt_zone": None,
     "vf_zone": None,
@@ -878,6 +934,7 @@ SCHEMA_UNIFIED = {
     # Diagnostics
     "stim_a_pct": None,
     "stim_rv_pct": None,
+    "stim_lv_pct": None,
     "ams_episodes": None,
     "mode_switch_pct": None,
     "af_burden_pct": None,
@@ -933,7 +990,9 @@ battery_current_ua ("Batteriestrom"), battery_longevity ("Laufzeit"), \
 battery_charging_time_s ("Letzte max. Aufladung")
 - Testergebnisse: threshold_*_v ("Reizschwelle" amplitude), threshold_*_pw_ms (pulse width), \
 sensing_*_mv ("Signalamplitude"), impedance_*_ohm ("Elektrodenimpedanz"), \
-shock_impedance_ohm (HV coil), sensing_*_slew_vs (V/s), threshold_*_ma (mA)
+shock_impedance_ohm (HV coil), sensing_*_slew_vs (V/s), threshold_*_ma (mA). \
+CRT devices have A, RV, and LV rows — use _a_, _rv_, _lv_ suffixes. If a report \
+shows only RV and LV (no A), do NOT put LV values into _a_ fields.
 - Leads (PSA/Parameter): lead_a_model, lead_a_serial, lead_a_implant_date (A row), \
 lead_rv_* (V/RV row)
 - Parameter: mode ("Betriebsart"), base_rate_bpm ("Grundfrequenz/GF"), \
@@ -941,11 +1000,13 @@ upper_rate_bpm ("Ob Grenzfr/MTR"), av_paced_ms ("AV stimuliert"), \
 av_sensed_ms ("Wahrg. AV-Int.")
 - Stimulation: amplitude_*_v ("Impulsamplitude"), pulse_width_*_ms ("Impulsdauer"), \
 autocapture_* ("ACap/AutoCapture"), sense_ability_* ("SenseAbility™"), \
-sensitivity_*_mv ("Empfindlichkeit/Sensitivität")
+sensitivity_*_mv ("Empfindlichkeit/Sensitivität"). \
+CRT devices: use _a_, _rv_, _lv_ suffixes for A, RV, LV columns.
 - ICD zones: vt_zone, vf_zone ("Zonenkonfiguration"), therapy ("Therapie")
-- Diagnostik: stim_a_pct (AP%), stim_rv_pct (VP%), ams_episodes ("AMS-Episoden"), \
-mode_switch_pct ("Mode-Switch"), af_burden_pct ("AT/AF-Burden"), \
-diagnostics_since ("Seit:" date), vt_vf_episodes ("VT/VF-Episoden")
+- Diagnostik: stim_a_pct (AP%), stim_rv_pct (VP%), stim_lv_pct (LV%, CRT only), \
+ams_episodes ("AMS-Episoden"), mode_switch_pct ("Mode-Switch"), \
+af_burden_pct ("AT/AF-Burden"), diagnostics_since ("Seit:" date), \
+vt_vf_episodes ("VT/VF-Episoden")
 - Freeze: max_sensor_rate_bpm, rate_hysteresis, vip ("VIP™"), \
 rate_adaptive_av, rate_adaptive_pvarp, vent_safety_pacing
 

@@ -204,8 +204,24 @@ def _parse_nachsorge(page) -> dict:
     out["sensing_lv_mv"] = sensing["lv"]
 
     thresh = _3col(rows, r"Reizschwelle\s+\[V\]")
+    out["threshold_a_v"]  = thresh["a"]
     out["threshold_rv_v"] = thresh["rv"]
     out["threshold_lv_v"] = thresh["lv"]
+
+    # Threshold pulse width: "Impulsdauer [ms]" row immediately after "Reizschwelle [V]"
+    reiz_idx = next(
+        (i for i, r in enumerate(rows)
+         if re.search(r"Reizschwelle\s+\[V\]", _label(r), re.IGNORECASE)),
+        None,
+    )
+    if reiz_idx is not None:
+        for r in rows[reiz_idx + 1 : reiz_idx + 3]:
+            if re.search(r"Impulsdauer\s+\[ms\]", _label(r), re.IGNORECASE):
+                tpw = _values(r)
+                out["threshold_a_pw_ms"]  = tpw.get("a")
+                out["threshold_rv_pw_ms"] = tpw.get("rv")
+                out["threshold_lv_pw_ms"] = tpw.get("lv")
+                break
 
     imp = _3col(rows, r"Stimulationsimpedanz")
     out["impedance_a_ohm"]  = imp["a"]
@@ -256,6 +272,7 @@ def extract(pdf_path: str | Path) -> dict:
         # Fall back to page 1 spatial for test fields absent on page 3
         p1_rows = _rows(pdf.pages[0])
         _FALLBACK_FIELDS = [
+            ("threshold_a_v",  lambda: _3col(p1_rows, r"Reizschwelle\s+\[V\]")["a"]),
             ("threshold_lv_v", lambda: _3col(p1_rows, r"Reizschwelle\s+\[V\]")["lv"]),
             ("threshold_rv_v", lambda: _3col(p1_rows, r"Reizschwelle\s+\[V\]")["rv"]),
             ("sensing_lv_mv",  lambda: _3col(p1_rows, r"Wahrnehmungsamplitude")["lv"]),
@@ -265,5 +282,23 @@ def extract(pdf_path: str | Path) -> dict:
         for field, getter in _FALLBACK_FIELDS:
             if result.get(field) is None:
                 result[field] = getter()
+
+        # Threshold pulse width fallback from page 1
+        pw_fields = ("threshold_a_pw_ms", "threshold_rv_pw_ms", "threshold_lv_pw_ms")
+        if any(result.get(f) is None for f in pw_fields):
+            p1_reiz = next(
+                (i for i, r in enumerate(p1_rows)
+                 if re.search(r"Reizschwelle\s+\[V\]", _label(r), re.IGNORECASE)),
+                None,
+            )
+            if p1_reiz is not None:
+                for r in p1_rows[p1_reiz + 1 : p1_reiz + 3]:
+                    if re.search(r"Impulsdauer\s+\[ms\]", _label(r), re.IGNORECASE):
+                        tpw = _values(r)
+                        for ch in ("a", "rv", "lv"):
+                            key = f"threshold_{ch}_pw_ms"
+                            if result.get(key) is None:
+                                result[key] = tpw.get(ch)
+                        break
 
     return result

@@ -62,7 +62,7 @@ def _load_vqa(device: str):
             import torch  # noqa: F401
         except ImportError:
             raise ModuleNotFoundError(
-                "torch not available — VQA extraction requires CUDA (run on bigboy)"
+                "torch not available — VQA extraction requires a CUDA GPU"
             )
         from vqa import load_model
         _vqa_model, _vqa_processor = load_model(device)
@@ -76,7 +76,7 @@ def _load_vqa27b(device: str):
             import torch  # noqa: F401
         except ImportError:
             raise ModuleNotFoundError(
-                "torch not available — VQA27B extraction requires CUDA (run on bigboy)"
+                "torch not available — VQA27B extraction requires a CUDA GPU"
             )
         from vqa import load_model_27b
         _vqa27b_model, _vqa27b_processor = load_model_27b(device)

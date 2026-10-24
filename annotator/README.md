@@ -1,8 +1,8 @@
-# CIEDOcr Ground-Truth Annotator
+# CIED-Extract Ground-Truth Annotator
 
-A small internal web tool to build/curate ground truth for the CIEDOcr parsers.
+A small internal web tool to build/curate ground truth for the CIED-Extract parsers.
 
-**Flow:** upload a report PDF → pick the vendor → the CIEDOcr extraction API runs the
+**Flow:** upload a report PDF → pick the vendor → the CIED-Extract API runs the
 right per-vendor extractor → the PDF is shown next to every extracted field → you
 cross-check, edit values, add missing fields, drop wrong ones → **Submit** writes a
 ground-truth bundle laid out like `samples/`.
@@ -14,13 +14,13 @@ exactly what the product extracts.
 
 ```bash
 pip install -r requirements.txt
-# point at wherever the CIEDOcr API runs (default: http://localhost:8082)
-CIEDOCR_URL=http://localhost:8082 uvicorn app:app --host 0.0.0.0 --port 8090
+# point at wherever the CIED-Extract API runs (default: http://localhost:8082)
+CIED_EXTRACT_URL=http://localhost:8082 uvicorn app:app --host 0.0.0.0 --port 8090
 # open http://localhost:8090
 ```
 
-On bigboy (API at :8082 on the same host) the default works. From another machine
-set `CIEDOCR_URL=http://bigboy.fritz.box:8082`.
+When the API runs on the same host the default works. From another machine
+set `CIED_EXTRACT_URL=http://<api-host>:8082`.
 
 ## Output
 

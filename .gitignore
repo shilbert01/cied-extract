@@ -1,8 +1,32 @@
 __pycache__/
 *.pyc
 .venv/
-*.pdf
 *.bak
+.claude/
+
+# Patient data — real reports, never commit
 samples/
 results/
-.claude/
+*.pdf
+*.log
+*.bnk
+*.pdd
+*.pkg
+*.hl7
+*.26X
+*.V26
+
+# Legacy / internal dev scripts (kept locally, not in repo)
+abbott_merlin.py
+medtronic_2090.py
+extractor.py
+models.py
+ocr_engine.py
+main.py
+make_report_pdf.py
+benchmark_results.json
+benchmark_vqa.py
+run_abbott_vqa.py
+run_extract.py
+probe_*.py
+*.png

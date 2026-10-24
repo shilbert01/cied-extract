@@ -124,16 +124,18 @@ def _parse_params(text: str) -> dict:
     if not out.get("pulse_width_a_ms"):
         out["pulse_width_a_ms"] = _find(r"A-Impulss?breite\s+([\d.]+)\s*ms", text)
 
-    # PM: "V Stimulation 3.5 V / 0.35 ms"
+    # PM: "V Stimulation 3.5 V / 0.35 ms" — use rv_ prefix for adapter compatibility
     m = re.search(r"^V\s+Stimulation\s+([\d.]+)\s*V\s*/\s*([\d.]+)\s*ms", text,
                   re.MULTILINE | re.IGNORECASE)
     if m:
-        out["amplitude_v_v"] = m.group(1)
-        out["pulse_width_v_ms"] = m.group(2)
+        out["amplitude_rv_v"] = m.group(1)
+        out["pulse_width_rv_ms"] = m.group(2)
 
     # CRT-D: RV "RV-Stimulationsamplitude X V" + "RV-Impulsbreite Y ms"
-    out["amplitude_rv_v"] = _find(r"RV-Stimulationsamplitude\s+([\d.]+)\s*V", text)
-    out["pulse_width_rv_ms"] = _find(r"RV-Impulsbreite\s+([\d.]+)\s*ms", text)
+    if not out.get("amplitude_rv_v"):
+        out["amplitude_rv_v"] = _find(r"RV-Stimulationsamplitude\s+([\d.]+)\s*V", text)
+    if not out.get("pulse_width_rv_ms"):
+        out["pulse_width_rv_ms"] = _find(r"RV-Impulsbreite\s+([\d.]+)\s*ms", text)
 
     # CRT-D: LV "LV Ampl. / Dauer 2.5 V / 1.50 ms"
     m = re.search(r"LV\s+Ampl\.\s*/\s*Dauer\s+([\d.]+)\s*V\s*/\s*([\d.]+)\s*ms", text, re.IGNORECASE)
@@ -143,9 +145,10 @@ def _parse_params(text: str) -> dict:
 
     # Sensing (programmed, from parameter section)
     out["sensing_prog_a_mv"] = _find(r"A\s+Empfindlichkeit\s+([\d.]+)\s*mV", text)
-    out["sensing_prog_v_mv"] = _find(r"^V\s+Empfindlichkeit\s+([\d.]+)\s*mV", text,
-                                      flags=re.MULTILINE | re.IGNORECASE)
-    out["sensing_prog_rv_mv"] = _find(r"RV\s+Empfindlichkeit\s+([\d.]+)\s*mV", text)
+    out["sensing_prog_rv_mv"] = _find(r"^V\s+Empfindlichkeit\s+([\d.]+)\s*mV", text,
+                                       flags=re.MULTILINE | re.IGNORECASE)
+    if not out.get("sensing_prog_rv_mv"):
+        out["sensing_prog_rv_mv"] = _find(r"RV\s+Empfindlichkeit\s+([\d.]+)\s*mV", text)
 
     # Battery (pacemaker page 2)
     m = re.search(r"Impedanz\s+([\d.]+)\s*kOhm", text, re.IGNORECASE)
@@ -215,20 +218,20 @@ def _parse_tests_pm(text: str) -> dict:
     m = re.search(r"Impedanz\s+A\s+V\s+([\d.]+)\s+Ohm\s+([\d.]+)\s+Ohm", text, re.IGNORECASE)
     if m:
         out["impedance_a_ohm"] = m.group(1)
-        out["impedance_v_ohm"] = m.group(2)
+        out["impedance_rv_ohm"] = m.group(2)
 
     # "Reizschwelle\nA V\n0.25 V 0.25 V"
     m = re.search(r"Reizschwelle\s+A\s+V\s+([\d.]+)\s+V\s+([\d.]+)\s+V", text, re.IGNORECASE)
     if m:
         out["threshold_a_v"] = m.group(1)
-        out["threshold_v_v"] = m.group(2)
+        out["threshold_rv_v"] = m.group(2)
 
     # "Wahrnehm.\nA V\n1.30 mV -"
     m = re.search(r"Wahrnehm\.\s+A\s+V\s+([\d.]+)\s+mV\s+(-|\S+)", text, re.IGNORECASE)
     if m:
         out["sensing_a_mv"] = m.group(1)
         v_sense = m.group(2)
-        out["sensing_v_mv"] = None if v_sense == "-" else v_sense
+        out["sensing_rv_mv"] = None if v_sense == "-" else v_sense
 
     # Test date (e.g., "28/Juni/2026")
     dates = re.findall(r"\d{1,2}/\w+/\d{4}", text)

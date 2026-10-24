@@ -6,7 +6,7 @@
 # Note: CPU inference is ~5-10x slower but works without nvidia-container-toolkit.
 
 services:
-  ciedocr:
+  cied-extract:
     # Revert to default runtime (removes runtime: nvidia from base)
     runtime: runc
 

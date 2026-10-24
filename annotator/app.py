@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-CIEDOcr Ground-Truth Annotator — a small internal tool to build/curate ground truth.
+CIED-Extract Ground-Truth Annotator — a small internal tool to build/curate ground truth.
 
-Flow: upload a report PDF + pick the vendor → the CIEDOcr extraction API runs the
+Flow: upload a report PDF + pick the vendor → the CIED-Extract API runs the
 right per-vendor extractor → the PDF is shown next to every extracted field →
 the user cross-checks, edits, adds/removes fields → "Submit" writes a ground-truth
 bundle (report.pdf + ground_truth.json + meta.json) laid out like samples/, ready
@@ -10,7 +10,7 @@ to fold into the validate.py corpus.
 
 Run:
     pip install -r requirements.txt
-    CIEDOCR_URL=http://localhost:8082 uvicorn app:app --host 0.0.0.0 --port 8090
+    CIED_EXTRACT_URL=http://localhost:8082 uvicorn app:app --host 0.0.0.0 --port 8090
 """
 import json
 import os
@@ -25,7 +25,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-CIEDOCR_URL = os.environ.get("CIEDOCR_URL", "http://localhost:8082").rstrip("/")
+CIED_EXTRACT_URL = os.environ.get("CIED_EXTRACT_URL", "http://localhost:8082").rstrip("/")
 EXTRACT_TIMEOUT = int(os.environ.get("ANNOTATOR_EXTRACT_TIMEOUT", "600"))
 
 BASE = Path(__file__).parent
@@ -42,7 +42,7 @@ MANUFACTURERS = {
     "abbott":            "Abbott",
 }
 
-app = FastAPI(title="CIEDOcr Ground-Truth Annotator")
+app = FastAPI(title="CIED-Extract Ground-Truth Annotator")
 
 
 def _slug(s: str) -> str:
@@ -51,16 +51,16 @@ def _slug(s: str) -> str:
 
 
 def _extract_via_api(pdf_bytes: bytes, vendor: str) -> dict:
-    """Submit to the CIEDOcr API (async) and poll to completion."""
+    """Submit to the CIED-Extract API (async) and poll to completion."""
     req = urllib.request.Request(
-        f"{CIEDOCR_URL}/v1/extract?mode=async",
+        f"{CIED_EXTRACT_URL}/v1/extract?mode=async",
         data=pdf_bytes,
         headers={"Content-Type": "application/pdf", "X-Vendor-Hint": vendor},
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=30) as r:
         submit = json.loads(r.read())
-    poll_url = CIEDOCR_URL + submit.get("poll", "/v1/jobs/" + str(submit.get("job_id")))
+    poll_url = CIED_EXTRACT_URL + submit.get("poll", "/v1/jobs/" + str(submit.get("job_id")))
 
     deadline = time.monotonic() + EXTRACT_TIMEOUT
     while time.monotonic() < deadline:

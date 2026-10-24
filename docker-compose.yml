@@ -1,25 +1,25 @@
-# CiedOCR — GPU deployment (server default)
+# cied-extract — GPU deployment (server default)
 #
 # Setup:
 #   mkdir -p input output
 #   docker compose build
 #
 # Single PDF:
-#   docker compose run --rm ciedocr /data/input/report.pdf --output /data/output/report.json
+#   docker compose run --rm cied-extract /data/input/report.pdf --output /data/output/report.json
 #
 # Batch (all PDFs in ./input/):
-#   docker compose run --rm --entrypoint bash ciedocr \
+#   docker compose run --rm --entrypoint bash cied-extract \
 #     -c 'python main.py --output-dir /data/output /data/input/*.pdf'
 #
 # Pre-download model (run once, survives in named volume):
-#   docker compose run --rm ciedocr --help   # triggers model download on first real run
-#   docker compose run --rm --entrypoint bash ciedocr \
+#   docker compose run --rm cied-extract --help   # triggers model download on first real run
+#   docker compose run --rm --entrypoint bash cied-extract \
 #     -c 'python -c "from ocr_engine import OCREngine; OCREngine()._load()"'
 
 services:
-  ciedocr:
+  cied-extract:
     build: .
-    image: ciedocr:latest
+    image: cied-extract:latest
 
     volumes:
       # PDFs to process (read-only)
@@ -46,4 +46,4 @@ services:
 
 volumes:
   model_cache:
-    name: ciedocr_model_cache
+    name: cied-extract_model_cache

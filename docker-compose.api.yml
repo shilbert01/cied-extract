@@ -1,4 +1,4 @@
-# CIEDOcr HTTP service (server.py — docs/extract-api-v1.md)
+# cied-extract HTTP service (server.py — docs/extract-api-v1.md)
 #
 # GPU (default):
 #   docker compose -f docker-compose.api.yml up -d --build
@@ -10,18 +10,18 @@
 #   curl -s --data-binary @report.pdf -H 'Content-Type: application/pdf' \
 #        http://localhost:8082/v1/extract | jq .
 #
-# The central Pi points CIEDOCR_URL at http://<this-host>:8082 (LAN).
+# The central Pi points CIED_EXTRACT_URL at http://<this-host>:8082 (LAN).
 
 services:
   # Same service name as docker-compose.yml/.cpu.yml so the CPU override composes.
-  ciedocr:
+  cied-extract:
     build: .
-    image: ciedocr:latest
+    image: cied-extract:latest
 
     # Override the CLI entrypoint with the HTTP server
     entrypoint: ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
 
-    # Host 8082 (8000 is taken by ollama-webui on bigboy) → container 8000
+    # Host 8082 → container 8000
     ports:
       - "8082:8000"
 
@@ -54,7 +54,7 @@ services:
 
   annotator:
     build: .
-    image: ciedocr:latest
+    image: cied-extract:latest
 
     entrypoint: ["uvicorn", "annotator.app:app", "--host", "0.0.0.0", "--port", "8000"]
 
@@ -66,18 +66,18 @@ services:
       - annotator_submissions:/app/annotator/submissions
 
     environment:
-      # Reach the CIEDOcr extraction service via docker network
-      CIEDOCR_URL: http://ciedocr:8000
+      # Reach the cied-extract service via docker network
+      CIED_EXTRACT_URL: http://cied-extract:8000
 
     depends_on:
-      - ciedocr
+      - cied-extract
 
     restart: unless-stopped
 
 volumes:
   model_cache:
-    name: ciedocr_model_cache
+    name: cied-extract_model_cache
   annotator_work:
-    name: ciedocr_annotator_work
+    name: cied-extract_annotator_work
   annotator_submissions:
-    name: ciedocr_annotator_submissions
+    name: cied-extract_annotator_submissions

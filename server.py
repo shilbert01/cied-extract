@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CIEDOcr Extraction API — FastAPI wrapper implementing docs/extract-api-v1.md.
+CIED-Extract API — FastAPI wrapper implementing docs/extract-api-v1.md.
 
 Dispatches each PDF to the correct per-vendor extractor in `extractors/`:
   * Biotronik / ELA-Sorin / Boston Scientific  → pdfplumber text (no model, CPU)
@@ -39,12 +39,12 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%SZ",
 )
-log = logging.getLogger("ciedocr.api")
+log = logging.getLogger("cied-extract.api")
 
 # pdfplumber vendors are CPU-bound and run concurrently across workers; only the
 # Abbott/Qwen GPU path is serialized (via _gpu_lock) so it can't be run twice at once
 # and a slow/stuck Abbott job never blocks the fast pdfplumber vendors.
-N_WORKERS = int(os.environ.get("CIEDOCR_WORKERS", "3"))
+N_WORKERS = int(os.environ.get("CIED_EXTRACT_WORKERS", "3"))
 _gpu_lock = threading.Lock()
 
 # ── lazy Qwen VQA model (Abbott only) ─────────────────────────────────────────
@@ -226,7 +226,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="CIEDOcr Extraction API", version=SCHEMA_VERSION, lifespan=lifespan)
+app = FastAPI(title="CIED-Extract API", version=SCHEMA_VERSION, lifespan=lifespan)
 
 
 def _err(code: int, error: str, detail: str, request_id: str) -> JSONResponse:
@@ -307,7 +307,7 @@ def _do_extract(body: bytes, vendor_hint: str, request_id: str,
         "request_id": request_id,
         "status": "ok",
         "engine": {
-            "name": "ciedocr",
+            "name": "cied-extract",
             "version": ENGINE_VERSION,
             "extractor": (report.get("manufacturer") if isinstance(report, dict) else None) or vendor_hint,
             "model": ("log" if uses_log else "qwen-vqa") if is_abbott

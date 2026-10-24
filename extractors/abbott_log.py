@@ -156,18 +156,18 @@ def extract(log_path: str | Path) -> dict:
         # ── stimulation & sensing ─────────────────────────────────────────────
         "autocapture_a": _translate(rec, "Atrial AutoThreshold"),   # Monitor/Aus/Ein
         "autocapture_v": _translate(rec, "RV AutoCapture"),
-        "amplitude_a_v": _num(rec, "Atrial Pulse Amplitude"),
-        "amplitude_v_v": _num(rec, "RV Pulse Amplitude"),
-        "pulse_width_a_ms": _num(rec, "Atrial Pulse Width"),
-        "pulse_width_v_ms": _num(rec, "RV Pulse Width"),
+        "amplitude_a_v":      _num(rec, "Atrial Pulse Amplitude"),
+        "amplitude_rv_v":     _num(rec, "RV Pulse Amplitude"),
+        "pulse_width_a_ms":   _num(rec, "Atrial Pulse Width"),
+        "pulse_width_rv_ms":  _num(rec, "RV Pulse Width"),
         # SenseAbility: "Fixed"/"Automatic" AutoSense = Aus; "Auto"/"On" = Ein
         "sense_ability_a": _translate(rec, "Atrial AutoSense",    _AUTOSENSE),
         "sense_ability_v": _translate(rec, "Ventricular AutoSense", _AUTOSENSE),
         # PM uses "Ventricular Sensitivity"; ICD/CRT-D uses "Ventricular Pacemaker Max Sensitivity"
         "sensitivity_a_mv": (_num(rec, "Atrial Sensitivity", decimals=1)
                              or _num(rec, "Atrial Max Sensitivity", decimals=1)),
-        "sensitivity_v_mv": (_num(rec, "Ventricular Sensitivity", decimals=1)
-                             or _num(rec, "Ventricular Pacemaker Max Sensitivity", decimals=1)),
+        "sensitivity_rv_mv": (_num(rec, "Ventricular Sensitivity", decimals=1)
+                              or _num(rec, "Ventricular Pacemaker Max Sensitivity", decimals=1)),
 
         # ── diagnostics ───────────────────────────────────────────────────────
         "stim_a_pct": _num(rec, "Event Histogram Percent Paced In Atrium"),
@@ -198,11 +198,14 @@ def extract(log_path: str | Path) -> dict:
         # Raw measured impedances (more precise than FastPath rounded display)
         "impedance_a_ohm":  _num(rec, "Atrial Pacing Lead Impedance"),
         "impedance_rv_ohm": _num(rec, "RV Pacing Lead Impedance"),
-        # Capture test results
-        "capture_threshold_a_v":  _num(rec, "A. Capture Test Threshold Amplitude"),
-        "capture_threshold_rv_v": _num(rec, "RV. Capture Test Threshold Amplitude"),
-        "signal_amplitude_a_mv":  _num(rec, "Atrial Signal Amplitude", decimals=1),
-        "signal_amplitude_rv_mv": _num(rec, "Ventricular Signal Amplitude", decimals=1),
+        # Capture test results — use adapter-compatible threshold_* naming
+        "threshold_a_v":       _num(rec, "A. Capture Test Threshold Amplitude"),
+        "threshold_rv_v":      _num(rec, "RV. Capture Test Threshold Amplitude"),
+        "threshold_a_pw_ms":   _num(rec, "A. Capture Test Pulse Width"),
+        "threshold_rv_pw_ms":  _num(rec, "RV. Capture Test Pulse Width"),
+        # Measured sensing amplitudes
+        "sensing_a_mv":        _num(rec, "Atrial Signal Amplitude", decimals=1),
+        "sensing_rv_mv":       _num(rec, "Ventricular Signal Amplitude", decimals=1),
         "longevity_estimate":     _get(rec, "Longevity Estimate"),
         "battery_current_ua":     _num(rec, "Battery Current"),
     }
@@ -225,10 +228,18 @@ def extract(log_path: str | Path) -> dict:
             "shock_config": _get(rec, "Shock Configuration"),
         })
 
+    if device_class in ("ICD", "CRT-D"):
+        result["shock_impedance_ohm"] = _num(rec, "HV Lead Impedance")
+
     if device_class == "CRT-D":
         result.update({
-            "lv_lead_model":  _get(rec, "Model Number: SJM LV Lead"),
-            "lv_lead_serial": _get(rec, "LV Lead Serial Number"),
+            "lv_lead_model":       _get(rec, "Model Number: SJM LV Lead"),
+            "lv_lead_serial":      _get(rec, "LV Lead Serial Number"),
+            "impedance_lv_ohm":    _num(rec, "LV Pacing Lead Impedance"),
+            "threshold_lv_v":      _num(rec, "LV. Capture Test Threshold Amplitude"),
+            "threshold_lv_pw_ms":  _num(rec, "LV. Capture Test Pulse Width"),
+            "amplitude_lv_v":      _num(rec, "LV Pulse Amplitude"),
+            "pulse_width_lv_ms":   _num(rec, "LV Pulse Width"),
         })
 
     return result
