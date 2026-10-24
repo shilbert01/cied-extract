@@ -30,7 +30,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 SCHEMA_VERSION = "1.0"
-ENGINE_VERSION = "0.3.0"          # per-vendor dispatch + .bnk/.pdd/.pkg/Microport
+ENGINE_VERSION = "0.3.1"          # expanded Wrapup extractor + FastPath merge
 JOB_TTL_SECONDS = 3600
 SUPPORTED_VENDORS = ["biotronik", "ela_sorin", "boston_scientific", "abbott", "medtronic", "microport"]
 

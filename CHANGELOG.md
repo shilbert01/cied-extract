@@ -2,6 +2,16 @@
 
 All notable changes to cied-extract are documented here.
 
+## [0.3.1] — 2026-10-24
+
+### Added
+
+- **Abbott Wrapup**: lead detail fields — model, serial, implant date for A/RV/LV electrodes.
+- **Abbott Wrapup**: patient date of birth (`patient_dob`), battery voltage, RV and LV threshold fields.
+- **Abbott Wrapup**: improved prompt with structured Aggregat table extraction.
+- **Abbott Unified**: LV lead fields (`lead_lv_model`, `lead_lv_serial`, `lead_lv_implant_date`) and `patient_dob`.
+- **Abbott FastPath**: automatic Wrapup page detection and merge — multi-page FastPath PDFs now extract supplementary data (lead serials, patient DOB, battery details) from the trailing Wrapup page.
+
 ## [0.3.0] — 2026-10-24
 
 Initial public release.
