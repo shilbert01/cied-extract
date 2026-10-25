@@ -2,6 +2,13 @@
 
 All notable changes to cied-extract are documented here.
 
+## [0.3.2] — 2026-10-25
+
+### Improved
+
+- **Abbott VQA prompts**: clarified that the interrogation time is printed on a separate line below the date in the header — all prompts now instruct the model to combine date + time as "d Mon yyyy HH:MM".
+- **Abbott multi-page**: Wrapup page scan now runs for all report types (summary, freeze, parameters, etc.), not just FastPath.
+
 ## [0.3.1] — 2026-10-24
 
 ### Added
