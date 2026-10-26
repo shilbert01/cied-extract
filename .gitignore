@@ -24,9 +24,12 @@ models.py
 ocr_engine.py
 main.py
 make_report_pdf.py
-benchmark_results.json
-benchmark_vqa.py
-run_abbott_vqa.py
-run_extract.py
 probe_*.py
 *.png
+
+# Benchmark — track bench.py harness, ignore old scripts and results
+benchmark/benchmark_vqa.py
+benchmark/benchmark_results.json
+benchmark/run_*.py
+benchmark/probe_*.py
+benchmark/results/
