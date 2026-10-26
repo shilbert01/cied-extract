@@ -25,6 +25,17 @@ Usage:
 
 Run on bigboy:
     python benchmark/bench.py --llm-url http://localhost:11434
+
+
+Phased execution (when OXR and Ollama can't share a GPU):
+    # Phase 1 — Ollama up: run qwen-vl and paddleocr+llm
+    python bench.py --backends qwen-vl paddleocr paddleocr+llm
+
+    # Phase 2 — stop Ollama, start OXR: collect OXR markdown (cached to disk)
+    python bench.py --backends oxr --cache-dir ./cache
+
+    # Phase 3 — stop OXR, restart Ollama: run LLM on cached OXR output
+    python bench.py --backends oxr+llm --cache-dir ./cache
 """
 import argparse
 import json
@@ -101,14 +112,32 @@ def find_abbott_pdf_samples(samples_dir: Path) -> list[dict]:
 
 class Backend:
     name: str = "base"
+    cache_dir: Path | None = None
 
     def setup(self, **kwargs):
         """One-time setup (load models, connect to APIs)."""
-        pass
+        if kwargs.get("cache_dir"):
+            self.cache_dir = Path(kwargs["cache_dir"])
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def extract(self, pdf_path: Path, meta: dict) -> dict:
         """Extract structured data from a PDF. Returns a flat dict of fields."""
         raise NotImplementedError
+
+    def _cache_key(self, pdf_path: Path) -> str:
+        return pdf_path.stem + "__" + pdf_path.parent.name
+
+    def _save_cache(self, pdf_path: Path, prefix: str, text: str):
+        if self.cache_dir:
+            p = self.cache_dir / f"{prefix}__{self._cache_key(pdf_path)}.txt"
+            p.write_text(text, encoding="utf-8")
+
+    def _load_cache(self, pdf_path: Path, prefix: str) -> str | None:
+        if self.cache_dir:
+            p = self.cache_dir / f"{prefix}__{self._cache_key(pdf_path)}.txt"
+            if p.exists():
+                return p.read_text(encoding="utf-8")
+        return None
 
 
 # ── backend: Qwen3-VL (native VLM, current production) ──────────────────────
@@ -133,12 +162,11 @@ class OXRBackend(Backend):
     name = "oxr"
 
     def setup(self, **kwargs):
+        super().setup(**kwargs)
         self.oxr_url = kwargs.get("oxr_url", "http://localhost:8000")
 
-    def extract(self, pdf_path: Path, meta: dict) -> dict:
+    def _call_oxr(self, pdf_path: Path) -> str:
         import urllib.request
-        import urllib.parse
-
         url = f"{self.oxr_url}/v1/parse/sync"
         boundary = "----BenchBoundary"
         pdf_bytes = pdf_path.read_bytes()
@@ -163,10 +191,17 @@ class OXRBackend(Backend):
             headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=300) as resp:
             result = json.loads(resp.read())
+        return result.get("markdown", "") or ""
 
-        markdown = result.get("markdown", "") or ""
+    def extract(self, pdf_path: Path, meta: dict) -> dict:
+        cached = self._load_cache(pdf_path, "oxr")
+        if cached is not None:
+            markdown = cached
+        else:
+            markdown = self._call_oxr(pdf_path)
+            self._save_cache(pdf_path, "oxr", markdown)
         return {"_raw_markdown": markdown, "report_type": "unknown"}
 
 
@@ -238,15 +273,19 @@ class OXRLLMBackend(Backend):
     name = "oxr+llm"
 
     def setup(self, **kwargs):
-        self.oxr_url = kwargs.get("oxr_url", "http://localhost:8000")
+        super().setup(**kwargs)
         self.llm_url = kwargs.get("llm_url", "http://localhost:11434")
         self.llm_model = kwargs.get("llm_model", "qwen3:8b")
         self._oxr = OXRBackend()
         self._oxr.setup(**kwargs)
 
     def extract(self, pdf_path: Path, meta: dict) -> dict:
-        oxr_result = self._oxr.extract(pdf_path, meta)
-        markdown = oxr_result.get("_raw_markdown", "")
+        cached = self._load_cache(pdf_path, "oxr")
+        if cached is not None:
+            markdown = cached
+        else:
+            oxr_result = self._oxr.extract(pdf_path, meta)
+            markdown = oxr_result.get("_raw_markdown", "")
         if not markdown:
             return {}
         prompt = EXTRACTION_PROMPT.format(ocr_text=markdown[:8000])
@@ -260,9 +299,14 @@ class PaddleOCRBackend(Backend):
     name = "paddleocr"
 
     def setup(self, **kwargs):
+        super().setup(**kwargs)
         self._dpi = kwargs.get("dpi", 200)
 
     def extract(self, pdf_path: Path, meta: dict) -> dict:
+        cached = self._load_cache(pdf_path, "paddle")
+        if cached is not None:
+            return {"_raw_text": cached, "report_type": "unknown"}
+
         import pdf2image
         try:
             from paddleocr import PaddleOCR
@@ -280,7 +324,9 @@ class PaddleOCRBackend(Backend):
                 lines = [line[1][0] for line in result[0]]
                 full_text.extend(lines)
 
-        return {"_raw_text": "\n".join(full_text), "report_type": "unknown"}
+        text = "\n".join(full_text)
+        self._save_cache(pdf_path, "paddle", text)
+        return {"_raw_text": text, "report_type": "unknown"}
 
 
 # ── backend: PaddleOCR + LLM ────────────────────────────────────────────────
@@ -289,18 +335,65 @@ class PaddleOCRLLMBackend(Backend):
     name = "paddleocr+llm"
 
     def setup(self, **kwargs):
+        super().setup(**kwargs)
         self.llm_url = kwargs.get("llm_url", "http://localhost:11434")
         self.llm_model = kwargs.get("llm_model", "qwen3:8b")
         self._paddle = PaddleOCRBackend()
         self._paddle.setup(**kwargs)
 
     def extract(self, pdf_path: Path, meta: dict) -> dict:
-        paddle_result = self._paddle.extract(pdf_path, meta)
-        text = paddle_result.get("_raw_text", "")
+        cached = self._load_cache(pdf_path, "paddle")
+        if cached is not None:
+            text = cached
+        else:
+            paddle_result = self._paddle.extract(pdf_path, meta)
+            text = paddle_result.get("_raw_text", "")
         if not text:
             return {}
         prompt = EXTRACTION_PROMPT.format(ocr_text=text[:8000])
         raw = _query_ollama(self.llm_url, self.llm_model, prompt)
+        return _parse_llm_json(raw)
+
+
+# ── backend: deepseek-ocr via Ollama (vision model, direct extraction) ──────
+
+class DeepseekOCRBackend(Backend):
+    name = "deepseek-ocr"
+
+    def setup(self, **kwargs):
+        super().setup(**kwargs)
+        self.llm_url = kwargs.get("llm_url", "http://localhost:11434")
+        self.llm_model = "deepseek-ocr:3b"
+        self._dpi = kwargs.get("dpi", 200)
+
+    def extract(self, pdf_path: Path, meta: dict) -> dict:
+        import base64
+        import pdf2image
+        import urllib.request
+
+        images = pdf2image.convert_from_path(str(pdf_path), dpi=self._dpi,
+                                              first_page=1, last_page=1)
+        import io
+        buf = io.BytesIO()
+        images[0].save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode()
+
+        payload = json.dumps({
+            "model": self.llm_model,
+            "prompt": EXTRACTION_PROMPT.format(
+                ocr_text="[See the attached image of an Abbott pacemaker report]"),
+            "images": [b64],
+            "stream": False,
+            "options": {"temperature": 0, "num_predict": 2048},
+        })
+        req = urllib.request.Request(
+            f"{self.llm_url}/api/generate",
+            data=payload.encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            raw = json.loads(resp.read()).get("response", "")
         return _parse_llm_json(raw)
 
 
@@ -312,6 +405,7 @@ BACKENDS = {
     "oxr+llm":       OXRLLMBackend,
     "paddleocr":     PaddleOCRBackend,
     "paddleocr+llm": PaddleOCRLLMBackend,
+    "deepseek-ocr":  DeepseekOCRBackend,
 }
 
 
@@ -332,6 +426,8 @@ def main():
                    help="Ollama model for +llm backends")
     p.add_argument("--oxr-url", default="http://localhost:8000",
                    help="OXR API endpoint")
+    p.add_argument("--cache-dir", default=None,
+                   help="Cache OCR text to disk (enables phased runs)")
     p.add_argument("--report", default=None, help="Save JSON results to file")
     p.add_argument("--verbose", action="store_true", help="Print per-field misses")
     args = p.parse_args()
@@ -362,6 +458,7 @@ def main():
                 llm_url=args.llm_url,
                 llm_model=args.llm_model,
                 oxr_url=args.oxr_url,
+                cache_dir=args.cache_dir,
             )
         except Exception as e:
             print(f"  SETUP FAILED: {e}\n")
