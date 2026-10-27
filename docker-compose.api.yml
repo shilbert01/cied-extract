@@ -31,6 +31,8 @@ services:
 
     environment:
       HF_HOME: /cache/huggingface
+      NVIDIA_VISIBLE_DEVICES: "1"
+      CUDA_VISIBLE_DEVICES: "0"
 
     # Pin to GPU 1 (RTX 3080 Ti) — GPU 0 (RTX 4090) is reserved for Ollama
     deploy:

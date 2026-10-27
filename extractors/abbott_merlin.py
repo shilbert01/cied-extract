@@ -271,6 +271,7 @@ SCHEMA_PSA = {
 SCHEMA_PARAMETER_ICD = {
     "report_type": "ParameterReport",
     "patient_name": None,
+    "patient_dob": None,         # Geburtsdatum e.g. "26 Nov 1967"
     "followup_date": None,
     "device_model": None,        # e.g. "CDDRA300Q"
     "device_serial": None,       # e.g. "810187613"
@@ -284,12 +285,23 @@ SCHEMA_PARAMETER_ICD = {
     "mode": None,                # Betriebsart e.g. "DDD"
     "base_rate_bpm": None,       # Grundfrequenz e.g. "60"
     "upper_rate_bpm": None,      # MTR e.g. "100"
+    "max_sensor_rate_bpm": None, # Maximale Sensorfrq. (MSR) e.g. "110"
     "av_paced_ms": None,         # Stimuliertes AV-Intervall e.g. "180"
     "av_sensed_ms": None,        # Wahrg. AV-Int. e.g. "150"
     "amplitude_a_v": None,       # Impulsamplitude A e.g. "3,125"
     "pulse_width_a_ms": None,    # Impulsdauer A e.g. "0,5"
     "amplitude_rv_v": None,      # Impulsamplitude V e.g. "3,0"
     "pulse_width_rv_ms": None,   # Impulsdauer V e.g. "1,0"
+    "autocapture_v": None,       # AutoCapture V e.g. "Aus"
+    "sense_ability_v": None,     # SenseAbility™ e.g. "Ein"
+    "sensing_config_v": None,    # Empfindlichkeit e.g. "Auto"
+    "zone_vt1_interval_ms": None,  # VT-1 zone interval e.g. "400"
+    "zone_vt2_interval_ms": None,  # VT-2 zone interval e.g. "330"
+    "zone_vf_interval_ms": None,   # VF zone interval e.g. "260"
+    "atp_pulse_amplitude_v": None, # ATP-Impulsamplitude e.g. "7,5"
+    "atp_pulse_width_ms": None,    # ATP-Impulsdauer e.g. "1,0"
+    "shock_config": None,        # Schockkonfiguration e.g. "RV zu Gehäuse"
+    "impedance_hv_ohm": None,    # Schockimpedanz e.g. "70"
 }
 
 SCHEMA_TESTERGEBNISSE_RV = {
@@ -630,7 +642,7 @@ Testergebnisse section — three columns: "Reizschw." | "Signalamplitude" | "Imp
 
 PROMPT_PARAMETER_ICD = """\
 You are a medical data extraction assistant. Extract ICD programming parameters \
-from this Abbott Merlin PCS Parameter page (Seite 1 von N).
+from this Abbott Merlin PCS Parameter report (may span multiple pages).
 
 """ + _COMMON_RULES + """
 WHERE TO FIND EACH FIELD:
@@ -645,12 +657,10 @@ WHERE TO FIND EACH FIELD:
 
 Aggregat table (rows: ICD, A Elektrode, V Elektrode — columns: Hersteller/Modell/S/N/Impl.datum):
 - implant_date ← Impl.datum for the ICD row (e.g. "27 Mär 2026")
-- lead_a_model ← Modell for the "A Elektrode" row (e.g. "Tendril™ STS 2088TC / 52 cm");
-  strip the length suffix (e.g. "/ 52 cm") and return just the model name
+- lead_a_model ← Modell for the "A Elektrode" row (e.g. "Tendril™ STS 2088TC / 52 cm")
 - lead_a_serial ← S/N for "A Elektrode" row (e.g. "EDG165091")
 - lead_a_implant_date ← Impl.datum for "A Elektrode" row (e.g. "27 Mär 2026")
-- lead_rv_model ← Modell for the "V Elektrode" row (e.g. "Durata™ 7122Q");
-  strip the length suffix and return just the model name
+- lead_rv_model ← Modell for the "V Elektrode" row (e.g. "Durata™ 7122Q / 65 cm")
 - lead_rv_serial ← S/N for "V Elektrode" row (e.g. "BPA182474")
 - lead_rv_implant_date ← Impl.datum for "V Elektrode" row
 
@@ -671,6 +681,28 @@ Stimulation und Wahrnehmung section — two columns (A and V):
 - amplitude_rv_v ← "Impulsamplitude" row, V column value — if formatted as "X,X V (Y:1)"
   extract only the amplitude before " V " (e.g. "3,0" from "3,0 V (2.4:1)")
 - pulse_width_rv_ms ← "Impulsdauer" row, V column value, number only (e.g. "1,0")
+- autocapture_v ← "AutoCapture" or "Cap Confirm" row, V column (e.g. "Aus", "Ein")
+- sense_ability_v ← "SenseAbility™" row, V column (e.g. "Ein", "Aus")
+- sensing_config_v ← "Empfindlichkeit" row, V column (e.g. "Auto", "2,0 mV" — number only)
+
+Patient section (top of page 1):
+- patient_dob ← "Geburtsdatum" value (e.g. "26 Nov 1967")
+
+Frequenzen section (continued):
+- max_sensor_rate_bpm ← "Maximale Sensorfrq. (MSR)" value, number only (e.g. "110")
+
+ShockGuard™ Einstellungen (Zonenkonfiguration) — on page 2:
+- zone_vt1_interval_ms ← VT-1 column, the interval in ms (e.g. "400" from "150 min⁻¹/400 ms")
+- zone_vt2_interval_ms ← VT-2 column, the interval in ms (e.g. "330" from "181 min⁻¹/330 ms")
+- zone_vf_interval_ms ← VF column, the interval in ms (e.g. "260" from "230 min⁻¹/260 ms")
+
+ATP-Details section (page 3):
+- atp_pulse_amplitude_v ← "ATP-Impulsamplitude" value, number only (e.g. "7,5")
+- atp_pulse_width_ms ← "ATP-Impulsdauer" value, number only (e.g. "1,0")
+
+DeFT Response™ Einstellungen (page 3):
+- shock_config ← "Schockkonfiguration" value (e.g. "RV zu Gehäuse") — copy as-is
+- impedance_hv_ohm ← "Schockimpedanz" value, number only (e.g. "70")
 
 """ + json.dumps(SCHEMA_PARAMETER_ICD, ensure_ascii=False, indent=2)
 
@@ -744,15 +776,12 @@ def detect_report_type(pdf_path: str | Path) -> str:
 # ── VQA inference ─────────────────────────────────────────────────────────────
 
 def _vqa(model, processor, image, prompt: str, max_new_tokens: int = 1024) -> str:
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "image", "image": image},
-                {"type": "text",  "text": prompt},
-            ],
-        }
-    ]
+    if isinstance(image, (list, tuple)):
+        content = [{"type": "image", "image": img} for img in image]
+    else:
+        content = [{"type": "image", "image": image}]
+    content.append({"type": "text", "text": prompt})
+    messages = [{"role": "user", "content": content}]
     import torch
     inputs = processor.apply_chat_template(
         messages,
@@ -1191,12 +1220,21 @@ def extract(
     elif report_type == "wrapup":
         prompt = PROMPT_WRAPUP_ICD
     elif report_type == "parameters_icd":
-        # No Wrap-up page found; extract device/leads/programming from Parameters page.
-        prompt = PROMPT_PARAMETER_ICD
+        # Multi-page parameter report: render all pages and pass to VQA together
+        n = _page_count(pdf_path)
+        if n > 1:
+            all_imgs = pdf2image.convert_from_path(str(pdf_path), dpi=dpi)
+            raw = _vqa(model, processor, all_imgs, PROMPT_PARAMETER_ICD)
+        else:
+            raw = _vqa(model, processor, image, PROMPT_PARAMETER_ICD)
+        result = _parse_json(raw)
+        result = _postprocess(result)
+        prompt = None
     else:
         prompt = PROMPT_SUMMARY
 
-    raw = _vqa(model, processor, image, prompt)
+    if prompt is not None:
+        raw = _vqa(model, processor, image, prompt)
     result = _parse_json(raw)
     # SummaryReport keeps units in values; only strip for other report types
     if report_type not in ("summary",):

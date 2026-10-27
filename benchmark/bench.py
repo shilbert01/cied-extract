@@ -61,9 +61,27 @@ def _flatten(d: dict, prefix: str = "") -> dict:
     return out
 
 
+_V_RV_ALIASES = {
+    "amplitude_v_v": "amplitude_rv_v",
+    "pulse_width_v_ms": "pulse_width_rv_ms",
+    "sensitivity_v_mv": "sensitivity_rv_mv",
+    "autocapture_v": "autocapture_rv",
+    "sense_ability_v": "sense_ability_rv",
+    "sensing_config_v": "sensing_config_rv",
+    "stim_v_pct": "stim_rv_pct",
+    "impedance_v": "impedance_rv_ohm",
+}
+_RV_V_ALIASES = {v: k for k, v in _V_RV_ALIASES.items()}
+
+
 def score(extracted: dict, truth: dict) -> tuple[int, int, list]:
     ef = _flatten(extracted)
     tf = _flatten(truth)
+    # Also store _v_ ↔ _rv_ aliases in extracted so either convention matches
+    for alias_map in (_V_RV_ALIASES, _RV_V_ALIASES):
+        for src, dst in alias_map.items():
+            if src in ef and dst not in ef:
+                ef[dst] = ef[src]
     keys = sorted(set(tf))
     match = total = 0
     misses = []
@@ -125,7 +143,12 @@ class Backend:
         raise NotImplementedError
 
     def _cache_key(self, pdf_path: Path) -> str:
-        return pdf_path.stem + "__" + pdf_path.parent.name
+        parts = pdf_path.parts
+        try:
+            idx = parts.index("abbott")
+            return "__".join(parts[idx + 1:]).replace(".pdf", "")
+        except ValueError:
+            return "__".join(parts[-4:]).replace(".pdf", "")
 
     def _save_cache(self, pdf_path: Path, prefix: str, text: str):
         if self.cache_dir:
@@ -193,7 +216,7 @@ class OXRBackend(Backend):
         )
         with urllib.request.urlopen(req, timeout=300) as resp:
             result = json.loads(resp.read())
-        return result.get("markdown", "") or ""
+        return result.get("data", {}).get("result", {}).get("outputs", {}).get("markdown", "") or ""
 
     def extract(self, pdf_path: Path, meta: dict) -> dict:
         cached = self._load_cache(pdf_path, "oxr")
@@ -206,44 +229,280 @@ class OXRBackend(Backend):
 
 
 # ── backend: OXR + LLM (document parser → light LLM for extraction) ─────────
+# Import production schemas lazily to avoid pulling in pdf2image at module level.
+import importlib as _il
+import re as _re
 
-EXTRACTION_PROMPT = """\
-You are a medical data extraction assistant. Below is the OCR text extracted \
-from an Abbott pacemaker/ICD interrogation report. Extract all clinical \
-parameters into a flat JSON object.
+def _load_abbott():
+    """Import abbott_merlin without triggering pdf2image (not installed on bigboy)."""
+    import types, importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "abbott_merlin", PROJECT_ROOT / "extractors" / "abbott_merlin.py",
+        submodule_search_locations=[],
+    )
+    # Stub pdf2image so import doesn't fail
+    import sys
+    _orig = sys.modules.get("pdf2image")
+    sys.modules["pdf2image"] = types.ModuleType("pdf2image")
+    try:
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    finally:
+        if _orig is not None:
+            sys.modules["pdf2image"] = _orig
+        else:
+            sys.modules.pop("pdf2image", None)
+    return mod
 
-RULES:
-- Copy values EXACTLY as printed (German decimal comma, German units).
-- Use null for fields not present in the text.
-- Return ONLY the JSON object — no markdown fences, no explanation.
+_abbott = _load_abbott()
+_COMMON_RULES = _abbott._COMMON_RULES
+SCHEMA_FREEZE = _abbott.SCHEMA_FREEZE
+SCHEMA_FASTPATH_ICD = _abbott.SCHEMA_FASTPATH_ICD
+SCHEMA_FASTPATH_PM = _abbott.SCHEMA_FASTPATH_PM
+SCHEMA_SUMMARY = _abbott.SCHEMA_SUMMARY
+SCHEMA_WRAPUP_ICD = _abbott.SCHEMA_WRAPUP_ICD
+SCHEMA_PSA = _abbott.SCHEMA_PSA
+SCHEMA_PARAMETER_ICD = _abbott.SCHEMA_PARAMETER_ICD
+SCHEMA_UNIFIED = _abbott.SCHEMA_UNIFIED
+_KEY_RENAME = _abbott._KEY_RENAME
+_UNIT_SUFFIX = _abbott._UNIT_SUFFIX
 
-FIELDS TO EXTRACT (use these exact keys):
-- report_type, patient_name, followup_date, device_model, device_serial
-- battery_voltage_v, battery_longevity, battery_current_ua, battery_remaining_pct
-- threshold_a_v, threshold_a_pw_ms, sensing_a_mv, impedance_a_ohm
-- threshold_rv_v, threshold_rv_pw_ms, sensing_rv_mv, impedance_rv_ohm
-- threshold_lv_v, threshold_lv_pw_ms, sensing_lv_mv, impedance_lv_ohm
-- impedance_hv_ohm
-- mode, base_rate_bpm, upper_rate_bpm
-- stim_a_amplitude_v, stim_a_pw_ms, sense_ability_a, sensitivity_a_mv
-- stim_v_amplitude_v, stim_v_pw_ms, sense_ability_v, sensitivity_v_mv
-- ap_paced_pct, vp_paced_pct, mode_switch_pct, ams_episodes
-- lead_a_model, lead_a_serial, lead_rv_model, lead_rv_serial
-- lead_lv_model, lead_lv_serial, patient_dob
 
-OCR TEXT:
-{ocr_text}
-"""
+def _postprocess(result: dict, report_type: str = "") -> dict:
+    """Strip units and normalize dates — mirrors abbott_merlin._postprocess
+    but skips _KEY_RENAME since ground truths use _v_ convention.
+    Summary reports keep units since their ground truths include them."""
+    cleaned = {}
+    skip_unit_strip = report_type == "summary"
+    for k, v in result.items():
+        if isinstance(v, str):
+            v = _re.sub(r'^(?:rightarrow|[▸▶►‣•→])\s*', '', v).strip()
+            if not skip_unit_strip:
+                v = _UNIT_SUFFIX.sub("", v).strip()
+            if k.endswith("_since") or k == "diagnostics_since" or k == "diagnostics.since":
+                v = _re.sub(r"^Seit\s+", "", v)
+        cleaned[k] = v
+    return cleaned
+
+
+def _simplify_markdown(md: str) -> str:
+    """Convert OXR HTML-table markdown to pipe-delimited plain text."""
+    out = _re.sub(r'!\[.*?\]\(.*?\)\s*', '', md)
+    out = _re.sub(r'\$?\^?\{-1\}\$?', '⁻¹', out)
+    out = _re.sub(r'\$\^?\{[^}]*\}\$?', '', out)
+    out = _re.sub(r'</?table>', '', out)
+    out = _re.sub(r'<tr>', '\n', out)
+    out = _re.sub(r'</tr>', '', out)
+    out = _re.sub(r'<td[^>]*>', ' | ', out)
+    out = _re.sub(r'</td>', '', out)
+    out = _re.sub(r'</?(?:th|thead|tbody)[^>]*>', '', out)
+    out = _re.sub(r'&lt;', '<', out)
+    out = _re.sub(r'&gt;', '>', out)
+    out = _re.sub(r'&amp;', '&', out)
+    out = _re.sub(r'(?<=[a-zA-Z])TM(?=[\s,.);\n]|$)', '™', out)
+    out = out.replace('rightarrow', '→')
+    out = _re.sub(r'\n{3,}', '\n\n', out)
+    return out.strip()
+
+
+def _classify_markdown(text: str) -> str:
+    """Classify Abbott report type from OXR markdown text."""
+    low = text[:3000].lower()
+    if "psa-bericht" in low:
+        return "psa"
+    if "ausschnitt" in low or "schlüsselparameter" in low or "freeze" in low:
+        return "freeze"
+    if "wrap-up" in low or "neue programmierung" in low:
+        return "wrapup"
+    # Aveir summary: has RA/RV battery subsections and Testergeb. with RA/RV rows
+    if ("batterieinformation" in low or ("laufzeit" in low and "\nra\n" in low.replace("\r", ""))) \
+            and ("testergeb" in low or "stimulation & wahr" in low):
+        return "summary"
+    if "modus & sensor" in low or "refraktärzeiten" in low:
+        return "parameters_icd"
+    if "fastpath" in low or "fastpath™" in low:
+        if "vt/vf" in low or "zonenkonfiguration" in low or "therapie" in low:
+            return "fastpath_icd"
+        return "fastpath_pm"
+    if "icd" in low or "defibrill" in low or "entrant" in low:
+        return "fastpath_icd"
+    if "schrittmacher" in low:
+        return "fastpath_pm"
+    return "unified"
+
+
+def _build_text_prompt(report_type: str, markdown: str) -> str:
+    """Build a per-report-type extraction prompt adapted for OCR text input."""
+
+    # Reuse _COMMON_RULES from production (unit stripping, etc.)
+    intro = "You are a medical data extraction assistant. Below is structured " \
+            "text (markdown with tables) extracted from an Abbott Merlin PCS " \
+            "report page. Extract the requested fields.\n\n"
+
+    schema_map = {
+        "freeze":         SCHEMA_FREEZE,
+        "fastpath_icd":   SCHEMA_FASTPATH_ICD,
+        "fastpath_pm":    SCHEMA_FASTPATH_PM,
+        "summary":        SCHEMA_SUMMARY,
+        "wrapup":         SCHEMA_WRAPUP_ICD,
+        "psa":            SCHEMA_PSA,
+        "parameters_icd": SCHEMA_PARAMETER_ICD,
+        "unified":        SCHEMA_UNIFIED,
+    }
+    schema = schema_map.get(report_type, SCHEMA_UNIFIED)
+
+    rules = _COMMON_RULES
+
+    # Per-type field-location hints adapted from the production VQA prompts
+    hints = {
+        "freeze": """\
+WHERE TO FIND EACH FIELD:
+- followup_date: look for a date like "24 Jun 2026" near the header
+- device: line mentioning "Aveir" or device name — copy exactly
+- facility: line starting with "HZ"
+- Schlüsselparameter table (left column = label, right column = value):
+  mode ← "Betriebsart", base_rate_bpm ← "Grundfrq." (number only),
+  av_paced_ms ← "AV stimuliert" (number only), av_sensed_ms ← "AV wahrgen." (number only),
+  upper_rate_bpm ← "Obere Grenzfrq." (number only), max_sensor_rate_bpm ← "Max. Sensorfrq." (number only),
+  rate_hysteresis ← "Frequenzhysteresedif.", vip ← "Ventricular Intrinsic Preference (VIP™)",
+  rate_adaptive_av ← "Frequenzabh. AV-Intervall", rate_adaptive_pvarp ← "Frequenzabh. PVARP/VREF",
+  vent_safety_pacing ← "Vent. Sicherheits-Stim."
+""",
+        "fastpath_pm": """\
+WHERE TO FIND EACH FIELD:
+- followup_date: date near header (e.g. "4 Apr 2025"). If time on next line, combine as "d Mon yyyy HH:MM".
+- device_model: model NUMBER after device name (e.g. "2172" from "Endurity MRI™ 2172")
+- device_serial: number after model (e.g. "5153558")
+- Batterie: battery_voltage_v ← "Spannung", battery_mag_freq_bpm ← "Magnetfrequenz",
+  battery_remaining_pct ← "Verbleib. Kapazität bis ERI"
+- Testergebnisse: For each lead (A, V/RV, LV if CRT):
+  threshold_*_v ← "Reizschwelle" amplitude (number before "V"),
+  threshold_*_pw_ms ← pulse width (number after "@" before "ms"),
+  sensing_*_mv ← "Signalamplitude", impedance_*_ohm ← "Elektrodenimpedanz"
+  If "Nicht durchgeführt" return that exact string, NOT null.
+- Parameter: mode ← "Betriebsart", base_rate_bpm ← "Grundfrequenz (GF)" (number only),
+  upper_rate_bpm ← "Ob Grenzfr MTR", av_paced_ms ← "Stimuliertes AV-Intervall",
+  av_sensed_ms ← "Wahrg. AV-Int."
+- Stimulation und Wahrnehmung: autocapture_* ← "ACap™ Confirm/V. AutoCapture",
+  amplitude_*_v ← "Impulsamplitude" (number before "V"),
+  pulse_width_*_ms ← "Impulsdauer" (number before "ms"),
+  sense_ability_* ← "SenseAbility™", sensitivity_*_mv ← "Empfindlichkeit" (number before "mV")
+- Diagnostik: diagnostics_since ← date after "Seit" (strip "Seit" prefix),
+  stim_a_pct ← "AP" %, stim_rv_pct ← "VP" %, ams_episodes ← "AMS-Episoden",
+  mode_switch_pct ← "Mode-Switch", af_burden_pct ← "AT/AF-Burden"
+""",
+        "fastpath_icd": """\
+WHERE TO FIND EACH FIELD:
+- followup_date: date near header. If time on next line, combine as "d Mon yyyy HH:MM".
+- device_model: model CODE after device name (e.g. "CDDRA300Q" from "Entrant™ DR CDDRA300Q")
+- device_serial: number after model code
+- Batterie: battery_eri ← "ERI", battery_current_ua ← "Batteriestrom",
+  battery_remaining_pct ← "Verbleib. Kapazität bis ERI"
+- Testergebnisse: threshold_rv_v, threshold_rv_pw_ms, sensing_rv_mv, impedance_rv_ohm,
+  threshold_lv_v, threshold_lv_pw_ms, sensing_lv_mv, impedance_lv_ohm,
+  shock_impedance_ohm ← HV coil impedance
+- Parameter: mode ← "Betriebsart" (word like "Stimulation", "VVI", "DDI"),
+  vt_zone ← "Zonenkonfiguration" VT column, vf_zone ← VF column,
+  detection_params ← "Detektionsparameter", therapy ← "Therapie"
+- Stimulation: sense_ability_rv ← "SenseAbility™" RV/V column,
+  sensing_config_rv ← "Empfindlichkeit" RV/V column,
+  sense_ability_lv, sensing_config_lv ← LV column (null if no LV)
+- Diagnostik: vt_vf_episodes ← "VT/VF-Episoden:" number
+""",
+        "summary": """\
+WHERE TO FIND EACH FIELD (SummaryReport for Aveir™ DR LP):
+IMPORTANT: This report uses units in values — copy EXACTLY as printed INCLUDING units.
+- patient: header (e.g. "DEMO"), device: "Aveir™ DR LP..." line, facility: "HZ..." line
+- interrogation_date: top-right date, visit_type: below date
+- Batterieinformationen — RA then RV subsections:
+  For each (battery_ra / battery_rv): estimated_longevity ← "Laufzeit",
+  rrt ← "RRT", implant_date ← "Datum der Implantation", voltage ← "Spannung",
+  current_ua ← "Batteriestrom", remaining_capacity_pct ← "Verbleibende Kapazität bis RRT"
+- Testergeb. — RA then RV rows: For each (test_ra / test_rv):
+  pacing_threshold ← value in Reizschwelle (e.g. "2,75 V @ 0,4 ms"),
+  pacing_threshold_date ← date in parentheses, sensing_mv ← Wahrnehmung value,
+  sensing_date, impedance_ohm ← Impedanz value, impedance_date
+- Parameter: mode ← "Betriebsart", base_rate ← "Grundfrq." WITH unit,
+  max_sensor_rate, upper_rate_limit, av_paced_ms, av_sensed_ms (all WITH units)
+- Stimulation: For each (stimulation_ra / stimulation_rv):
+  configuration ← "Elektrodenkonfig.", amplitude_v ← "Impulsampl." WITH unit,
+  pulse_width_ms ← "Impulsdauer" WITH unit, senseability ← "SenseAbility™",
+  sensitivity_mv ← "Sensitivität" WITH unit
+- Diagnostik: since ← "Seit:" value WITH time, ap_paced_pct, vp_paced_pct,
+  mode_switch_pct, ams_episodes
+""",
+        "wrapup": """\
+WHERE TO FIND EACH FIELD:
+- followup_date: date near header. If time, combine as "d Mon yyyy HH:MM".
+- device_model: model code (e.g. "3367-40QC"), device_serial: number after model
+- Patient: patient_dob ← "Geburtsdatum"
+- Aggregat table (rows for device, A Elektrode, RV/V Elektrode, LV Elektrode):
+  implant_date ← generator row, lead_a_model/serial/implant_date ← A row,
+  lead_rv_model/serial/implant_date ← RV/V row, lead_lv_* ← LV row (null if absent)
+- Batterie: battery_voltage_v ← "Spannung", battery_longevity ← "Laufzeit" WITH unit,
+  battery_charging_time_s ← "Letzte max. Aufladung", battery_current_ua ← "Batteriestrom",
+  battery_remaining_pct ← "Verbleib. Kapazität bis ERI", battery_eri ← "ERI"
+- Testergebnisse: threshold_*_v, threshold_*_pw_ms, sensing_*_mv, impedance_*_ohm
+  for A, RV, LV rows; impedance_hv_ohm ← HV coil
+- Parameter: mode, base_rate_bpm, upper_rate_bpm, av_paced_ms, av_sensed_ms,
+  vt_zone, vf_zone, therapy
+""",
+        "psa": """\
+WHERE TO FIND EACH FIELD:
+- implant_date: date in header, device_model: model number (e.g. "2172"), device_serial
+- Lead table (A, RV rows): lead_a_model, lead_a_serial, lead_a_implant_date,
+  lead_rv_model, lead_rv_serial, lead_rv_implant_date
+- Testergebnisse (Reizschw. / Signalamplitude / Impedanz):
+  For A: threshold_a_v ← amplitude before "V", threshold_a_pw_ms ← after "bei" before "ms",
+  threshold_a_ma ← current before "mA", sensing_a_mv ← before "mV",
+  sensing_a_slew_vs ← before "V/s", impedance_a_ohm ← before "Ω"
+  For RV: same pattern with _rv_ prefix.
+""",
+        "parameters_icd": """\
+WHERE TO FIND EACH FIELD:
+- followup_date: header date. device_model: code after device name, device_serial: number after model
+- Aggregat table: implant_date ← ICD row, lead_a_model/serial/implant_date ← A row,
+  lead_rv_model/serial/implant_date ← V row
+- Modus & Sensor: mode ← "Betriebsart"
+- Frequenzen: base_rate_bpm ← "Grundfrequenz", upper_rate_bpm ← "Obere Grenzfrequenz"
+- Intervalle: av_paced_ms ← "Stimuliertes AV-Intervall", av_sensed_ms ← "Wahrg. AV-Int."
+- Stimulation: amplitude_a_v, pulse_width_a_ms (A column), amplitude_rv_v, pulse_width_rv_ms (V column)
+""",
+    }
+
+    hint_block = hints.get(report_type, "Extract all visible fields.\n")
+
+    markdown = _simplify_markdown(markdown)
+
+    flat = _flatten(schema, "")
+    schema_json = json.dumps(flat, ensure_ascii=False, indent=2)
+
+    if report_type == "summary":
+        rules = (
+            "IMPORTANT RULES:\n"
+            "- Copy values EXACTLY as printed INCLUDING units (e.g. '12,0 uA', '99 %', '2,5 V', '0,4 ms').\n"
+            "- Use German decimal comma (e.g. '3,08', '0,5').\n"
+            "- Preserve '>' or '<' prefixes (e.g. '>3,3 V', '<1%').\n"
+            "- 'Nicht durchgeführt' means 'not performed' — if a value follows it, extract the value, not 'Nicht durchgeführt'.\n"
+            "- null for any field not visible in the text.\n"
+        )
+
+    return (
+        intro + rules + "\n" + hint_block + "\n"
+        "Return a FLAT JSON object matching these keys (null for missing fields):\n"
+        + schema_json + "\n\nOCR TEXT:\n" + markdown
+    )
 
 
 def _query_ollama(url: str, model: str, prompt: str) -> str:
     """Send a prompt to Ollama and return the response text."""
     import urllib.request
+    prompt = "/no_think\n" + prompt
     payload = json.dumps({
         "model": model,
         "prompt": prompt,
         "stream": False,
-        "options": {"temperature": 0, "num_predict": 2048},
+        "options": {"temperature": 0, "num_predict": 4096, "num_ctx": 16384},
     })
     req = urllib.request.Request(
         f"{url}/api/generate",
@@ -251,7 +510,7 @@ def _query_ollama(url: str, model: str, prompt: str) -> str:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    with urllib.request.urlopen(req, timeout=180) as resp:
         return json.loads(resp.read()).get("response", "")
 
 
@@ -288,9 +547,12 @@ class OXRLLMBackend(Backend):
             markdown = oxr_result.get("_raw_markdown", "")
         if not markdown:
             return {}
-        prompt = EXTRACTION_PROMPT.format(ocr_text=markdown[:8000])
+        report_type = _classify_markdown(markdown)
+        prompt = _build_text_prompt(report_type, markdown[:8000])
         raw = _query_ollama(self.llm_url, self.llm_model, prompt)
-        return _parse_llm_json(raw)
+        result = _parse_llm_json(raw)
+        result = _postprocess(result, report_type)
+        return result
 
 
 # ── backend: PaddleOCR (text extraction only) ───────────────────────────────
@@ -350,9 +612,12 @@ class PaddleOCRLLMBackend(Backend):
             text = paddle_result.get("_raw_text", "")
         if not text:
             return {}
-        prompt = EXTRACTION_PROMPT.format(ocr_text=text[:8000])
+        report_type = _classify_markdown(text)
+        prompt = _build_text_prompt(report_type, text[:8000])
         raw = _query_ollama(self.llm_url, self.llm_model, prompt)
-        return _parse_llm_json(raw)
+        result = _parse_llm_json(raw)
+        result = _postprocess(result, report_type)
+        return result
 
 
 # ── backend: deepseek-ocr via Ollama (vision model, direct extraction) ──────
@@ -378,10 +643,11 @@ class DeepseekOCRBackend(Backend):
         images[0].save(buf, format="PNG")
         b64 = base64.b64encode(buf.getvalue()).decode()
 
+        prompt = _build_text_prompt("unified",
+            "[See the attached image of an Abbott pacemaker report]")
         payload = json.dumps({
             "model": self.llm_model,
-            "prompt": EXTRACTION_PROMPT.format(
-                ocr_text="[See the attached image of an Abbott pacemaker report]"),
+            "prompt": prompt,
             "images": [b64],
             "stream": False,
             "options": {"temperature": 0, "num_predict": 2048},
@@ -394,7 +660,9 @@ class DeepseekOCRBackend(Backend):
         )
         with urllib.request.urlopen(req, timeout=300) as resp:
             raw = json.loads(resp.read()).get("response", "")
-        return _parse_llm_json(raw)
+        result = _parse_llm_json(raw)
+        result = _postprocess(result, "unified")
+        return result
 
 
 # ── registry ─────────────────────────────────────────────────────────────────
