@@ -51,6 +51,8 @@ SCHEMA_FASTPATH_ICD = {
     "report_type": "FastPathSummary",
     "patient_name": None,
     "followup_date": None,
+    "device_name": None,
+    "device_class": None,
     "device_model": None,
     "device_serial": None,
     "battery_eri": None,
@@ -81,6 +83,8 @@ SCHEMA_FASTPATH_PM = {
     "report_type": "FastPathSummary",
     "patient_name": None,
     "followup_date": None,
+    "device_name": None,
+    "device_class": None,
     "device_model": None,
     "device_serial": None,
     "battery_voltage_v": None,
@@ -155,6 +159,8 @@ SCHEMA_SUMMARY = {
     "report_type": "SummaryReport",
     "patient": None,
     "device": None,
+    "device_name": None,
+    "device_class": None,
     "facility": None,
     "interrogation_date": None,
     "visit_type": None,
@@ -191,6 +197,8 @@ SCHEMA_WRAPUP_ICD = {
     "patient_name": None,
     "patient_dob": None,             # Geburtsdatum e.g. "30 Sep 1939"
     "followup_date": None,
+    "device_name": None,             # commercial name e.g. "Quadra Assura™"
+    "device_class": None,            # e.g. "CRT-D", "ICD", "Schrittmacher"
     "device_model": None,
     "device_serial": None,
     "implant_date": None,            # Impl.datum for generator row
@@ -273,6 +281,8 @@ SCHEMA_PARAMETER_ICD = {
     "patient_name": None,
     "patient_dob": None,         # Geburtsdatum e.g. "26 Nov 1967"
     "followup_date": None,
+    "device_name": None,         # commercial name e.g. "Entrant™ VR"
+    "device_class": None,        # device class e.g. "ICD"
     "device_model": None,        # e.g. "CDDRA300Q"
     "device_serial": None,       # e.g. "810187613"
     "implant_date": None,        # device Impl.datum e.g. "27 Mär 2026"
@@ -367,14 +377,24 @@ WHERE TO FIND EACH FIELD:
   and the time is on the NEXT LINE directly below it (e.g. "14:30"). \
   Combine them as "d Mon yyyy HH:MM" (e.g. "4 Apr 2025 14:30"). \
   If no time line is shown, return just the date.
-- device_model: top centre, the model code after "Entrant™ DR " (e.g. "CDDRA300Q")
-- device_serial: top centre, the number after the model code (e.g. "810131959")
+- device_name: top centre, the commercial device name BEFORE the model code
+  (e.g. "Entrant™ DR" from "Entrant™ DR CDDRA300Q ICD 810131959")
+- device_class: top centre, the device class word AFTER the model code and BEFORE
+  the serial (e.g. "ICD" from "Entrant™ DR CDDRA300Q ICD 810131959")
+- device_model: top centre, the alphanumeric model code (e.g. "CDDRA300Q")
+- device_serial: top centre, the numeric serial number (e.g. "810131959")
 - Batterie section:
   - battery_eri ← value after "ERI" label (e.g. "> 5 Jhr.")
   - battery_current_ua ← "Batteriestrom" value (number, e.g. "12")
   - battery_remaining_pct ← "Verbleib. Kapazität bis ERI" value (e.g. ">95")
 - Testergebnisse section (tests performed during follow-up — if a row shows
   "Nicht durchgeführt", return that exact string, NOT null):
+  IMPORTANT: each cell can hold two stacked lines. The UPPER line is the current
+  measurement from this session. The LOWER line is the last known value from an
+  earlier session (may say "Keine vorherigen Ergebnisse"). Extract ONLY the UPPER
+  line. If the upper line is "Nicht durchgeführt" or empty, return that string or
+  null — never fall back to the lower line. Never copy a value from one row (RV)
+  into another (LV).
   For each lead row (RV, and LV if CRT-D), extract three measurements:
   - threshold_rv_v ← "Reizschwelle" amplitude for RV row (number before "V", e.g. "1,75")
   - threshold_rv_pw_ms ← "Reizschwelle" pulse width for RV row (number after "@" before "ms", e.g. "0,5")
@@ -417,13 +437,24 @@ WHERE TO FIND EACH FIELD:
   (e.g. "4 Apr 2025 14:30"). If no time line is shown, return just the date.
   IGNORE any date that follows the word "Seit" — that is the diagnostics_since
   date, not the followup_date.
-- device_model: top centre, model number after "Endurity MRI™ " (e.g. "2172")
-- device_serial: top centre, number after the model (e.g. "5153558")
+- device_name: top centre, the commercial device name BEFORE the model code
+  (e.g. "Quadra Allure MP™" from "Quadra Allure MP™ 3562 CRT-P 4098936",
+   or "Endurity MRI™" from "Endurity MRI™ 2172 Schrittmacher 5153558")
+- device_class: top centre, the device class word AFTER the model code and BEFORE
+  the serial (e.g. "CRT-P", "Schrittmacher")
+- device_model: top centre, the model number only (e.g. "3562", "2172")
+- device_serial: top centre, the numeric serial number (e.g. "4098936", "5153558")
 - Batterie section:
   - battery_voltage_v ← "Spannung" value (e.g. "3,08")
   - battery_mag_freq_bpm ← "Magnetfrequenz" value (number before "min⁻¹")
   - battery_remaining_pct ← "Verbleib. Kapazität bis ERI" value
 - Testergebnisse section: fields are "Nicht durchgeführt" if no test was done.
+  IMPORTANT: each cell can hold two stacked lines. The UPPER line is the current
+  measurement from this session. The LOWER line is the last known value from an
+  earlier session (may say "Keine vorherigen Ergebnisse"). Extract ONLY the UPPER
+  line. If the upper line is "Nicht durchgeführt" or empty, return that string or
+  null — never fall back to the lower line. Never copy a value from one row (RV)
+  into another (LV).
   Dual-chamber devices (DR) have A and V rows. CRT devices (CRT-P) have A, RV,
   and LV rows — map them to the _a_, _rv_, _lv_ fields respectively.
   For each lead, extract three measurements:
@@ -484,7 +515,10 @@ IMPORTANT RULES:
 
 WHERE TO FIND EACH FIELD:
 - patient: top centre header (e.g. "DEMO")
-- device: top centre, line starting "Aveir™ DR LP" (copy exactly as printed)
+- device: top centre, full device line (copy exactly as printed, e.g. "Aveir™ DR LP")
+- device_name: the commercial device name from the device line (e.g. "Aveir™ DR LP")
+- device_class: the device class if shown after a model code (e.g. "Schrittmacher",
+  "CRT-P", "ICD"); null if the device line has no separate class word
 - facility: top centre, line starting "HZ" (e.g. "HZ Leipzig")
 - interrogation_date: top-right corner, first date shown (e.g. "24 Jun 2026")
 - visit_type: top-right corner, below the date (e.g. "Bei der Nachsorge")
@@ -499,8 +533,14 @@ Batterieinformationen section — RA subsection then RV subsection:
   - remaining_capacity_pct ← "Verbleibende Kapazität bis RRT" value (e.g. "99 %")
 
 Testergeb. section — RA row then RV row, three columns: Reizschwelle / Wahrnehmung / Impedanz:
-  For each lead (test_ra / test_rv), ignore "Nicht durchgeführt" lines and use only
-  the line with the actual measured value and date in parentheses:
+  IMPORTANT: each cell can hold two stacked lines. The UPPER line is the current
+  session ("Nicht durchgeführt" if the test wasn't done today). The LOWER line is
+  the last known value from an earlier session with its date in parentheses (may
+  say "Keine vorherigen Ergebnisse"). Extract the MEASURED value and its date —
+  ignore "Nicht durchgeführt" lines. Never copy a value from one row (RA) into
+  another (RV).
+  For each lead (test_ra / test_rv), use the line with the actual measured value
+  and date in parentheses:
   - pacing_threshold ← value before the date in Reizschwelle (e.g. "2,75 V @ 0,4 ms")
   - pacing_threshold_date ← date in parentheses in Reizschwelle (e.g. "22 Jun 2026")
   - sensing_mv ← value before the date in Wahrnehmung (e.g. "7,5 mV")
@@ -546,8 +586,12 @@ WHERE TO FIND EACH FIELD:
   and the time is on the NEXT LINE directly below it (e.g. "14:30"). \
   Combine them as "d Mon yyyy HH:MM" (e.g. "4 Apr 2025 14:30"). \
   If no time line is shown, return just the date.
-- device_model: top centre, model code (e.g. "3367-40QC" or "3562")
-- device_serial: top centre, number after the model code
+- device_name: top centre, the commercial device name BEFORE the model code
+  (e.g. "Quadra Assura™" from "Quadra Assura™ 3367-40QC CRT-D 4142658")
+- device_class: top centre, the device class word AFTER the model code and BEFORE
+  the serial (e.g. "CRT-D", "ICD", "Schrittmacher")
+- device_model: top centre, model code only (e.g. "3367-40QC", "3562")
+- device_serial: top centre, the numeric serial number
 
 Patient section:
   - patient_dob ← "Geburtsdatum" value (e.g. "30 Sep 1939"); null if not shown
@@ -651,9 +695,13 @@ WHERE TO FIND EACH FIELD:
   (e.g. "8 Jul 2026") and the time is on the NEXT LINE directly below it \
   (e.g. "17:27"). Combine them as "d Mon yyyy HH:MM" (e.g. "8 Jul 2026 17:27"). \
   If no time line is shown, return just the date.
-- device_model: top-centre header, the model code AFTER "Entrant™ DR " or similar ICD name
-  (e.g. "CDDRA300Q" from "Entrant™ DR CDDRA300Q ICD 810187613")
-- device_serial: top-centre header, the NUMBER after the model code (e.g. "810187613")
+- device_name: top-centre header, the commercial device name BEFORE the model code
+  (e.g. "Entrant™ VR" from "Entrant™ VR CDVRA300Q ICD 810205816")
+- device_class: top-centre header, the device class word AFTER the model code and BEFORE
+  the serial number (e.g. "ICD" from "Entrant™ VR CDVRA300Q ICD 810205816")
+- device_model: top-centre header, the alphanumeric model code
+  (e.g. "CDVRA300Q" from "Entrant™ VR CDVRA300Q ICD 810205816")
+- device_serial: top-centre header, the NUMBER after the device type (e.g. "810205816")
 
 Aggregat table (rows: ICD, A Elektrode, V Elektrode — columns: Hersteller/Modell/S/N/Impl.datum):
 - implant_date ← Impl.datum for the ICD row (e.g. "27 Mär 2026")
