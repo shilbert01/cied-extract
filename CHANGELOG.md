@@ -2,6 +2,29 @@
 
 All notable changes to cied-extract are documented here.
 
+## [0.3.4] — 2026-10-27
+
+### Added
+
+- **Abbott device identification**: `device_name` (commercial name, e.g. "Quadra Allure MP™") and `device_class` (e.g. "ICD", "CRT-P", "Schrittmacher") fields added to FastPath ICD, FastPath PM, Summary, Wrapup, and Parameter ICD schemas and prompts. The header is now parsed as `<name> <model> <class> <serial>` consistently across all report types.
+
+### Improved
+
+- **Abbott Testergebnisse stacked values**: FastPath ICD, FastPath PM, and Summary prompts now explicitly instruct the model to extract only the upper (current session) line from stacked test cells, never falling back to the lower (previous session) line.
+
+## [0.3.3] — 2026-10-27
+
+### Added
+
+- **Abbott ICD Parameter Report**: 12 new fields — `patient_dob`, `max_sensor_rate_bpm`, `autocapture_v`, `sense_ability_v`, `sensing_config_v`, `zone_vt1_interval_ms`, `zone_vt2_interval_ms`, `zone_vf_interval_ms`, `atp_pulse_amplitude_v`, `atp_pulse_width_ms`, `shock_config`, `impedance_hv_ohm`.
+- **Multi-page VQA**: Parameter ICD reports now render all pages and pass them to Qwen3-VL in a single multi-image call, enabling extraction of zone config (page 2), ATP details, and shock settings (page 3).
+- **Multi-backend benchmark harness** (`benchmark/bench.py`): evaluates `qwen-vl`, `oxr+llm` (OXR markdown + Ollama qwen3:8b), and `deepseek-ocr` backends against ground truth with phased caching.
+
+### Improved
+
+- **Abbott Parameter ICD prompt**: lead model now includes length suffix (e.g. "Durata™ 7122Q / 65 cm"); `_vqa()` accepts single image or list of images.
+- **GPU pinning**: `docker-compose.api.yml` sets `NVIDIA_VISIBLE_DEVICES` and `CUDA_VISIBLE_DEVICES` for explicit GPU selection.
+
 ## [0.3.2] — 2026-10-25
 
 ### Improved

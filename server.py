@@ -30,7 +30,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 SCHEMA_VERSION = "1.0"
-ENGINE_VERSION = "0.3.3"          # multi-page ICD parameter extraction, 12 new fields
+ENGINE_VERSION = "0.3.4"          # device_name/device_class across all Abbott schemas
 JOB_TTL_SECONDS = 3600
 SUPPORTED_VENDORS = ["biotronik", "ela_sorin", "boston_scientific", "abbott", "medtronic", "microport"]
 
