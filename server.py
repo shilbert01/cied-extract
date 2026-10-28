@@ -30,7 +30,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 SCHEMA_VERSION = "1.0"
-ENGINE_VERSION = "0.3.4"          # device_name/device_class across all Abbott schemas
+ENGINE_VERSION = "0.3.5"          # PSA enhancements, Summary backfill, lead serial dedup
 JOB_TTL_SECONDS = 3600
 SUPPORTED_VENDORS = ["biotronik", "ela_sorin", "boston_scientific", "abbott", "medtronic", "microport"]
 

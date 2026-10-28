@@ -2,6 +2,20 @@
 
 All notable changes to cied-extract are documented here.
 
+## [0.3.5] — 2026-10-28
+
+### Added
+
+- **Abbott PSA Report**: `followup_date` (date + time), `device_name`, and `device_class` fields added to PSA schema and prompt.
+- **Abbott lead serial dedup**: `_dedup_lead_serials()` postprocessing safety net nulls out cross-row serial contamination — handles both "one row has model" and "no row has model" cases.
+- **Abbott placeholder handling**: `<not set>` and box-glyph characters in lead table cells are now converted to null via `_PLACEHOLDER` regex.
+- **Abbott Summary schema backfill**: `_backfill_schema()` ensures all schema blocks appear in the output even when the VQA model omits a section.
+
+### Improved
+
+- **Abbott PSA lead table prompt**: each row treated as independent — explicit rules prevent cross-row serial/model/date contamination.
+- **Abbott Summary token limit**: `max_new_tokens` raised from 1024 to 2048 to accommodate the large nested schema.
+
 ## [0.3.4] — 2026-10-27
 
 ### Added

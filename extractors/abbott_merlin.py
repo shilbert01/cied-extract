@@ -19,6 +19,7 @@ Usage:
     model, processor = load_model("cuda")
     result = extract("report.pdf", model, processor)
 """
+import copy
 import json
 import re
 from pathlib import Path
@@ -250,7 +251,10 @@ SCHEMA_PSA = {
     "report_type": "PSAReport",
     "patient_name": None,
     # Device header (top-right / top-centre of page)
+    "followup_date": None,      # date+time from top-right, e.g. "8 Jul 2026 14:30"
     "implant_date": None,       # date shown in top-right, e.g. "8 Jul 2026"
+    "device_name": None,        # commercial name e.g. "Endurity MRI™"
+    "device_class": None,       # e.g. "Schrittmacher"
     "device_model": None,       # e.g. "2172"
     "device_serial": None,      # e.g. "4130170"
     # Lead table (Elektrode / Hersteller / Modell / Serien-Nr. / Impl.datum)
@@ -658,16 +662,27 @@ this Abbott Merlin PCS PSA-Bericht (Pacing System Analyzer report).
 """ + _COMMON_RULES + """
 WHERE TO FIND EACH FIELD:
 - patient_name: top centre header, the patient's name (format "Lastname, Firstname")
-- implant_date: TOP-RIGHT corner of the page (format "d Mon yyyy", e.g. "8 Jul 2026")
-- device_model: TOP-CENTRE header, model number after "Endurity MRI™ " or other device name
-  (e.g. "2172" from "Endurity MRI™ 2172 Schrittmacher 4130170")
-- device_serial: TOP-CENTRE header, the number after the model (e.g. "4130170")
+- followup_date: TOP-RIGHT corner — the date is on one line (e.g. "8 Jul 2026") \
+  and the time is on the NEXT LINE directly below it (e.g. "14:30"). \
+  Combine them as "d Mon yyyy HH:MM" (e.g. "8 Jul 2026 14:30"). \
+  If no time line is shown, return just the date.
+- implant_date: TOP-RIGHT corner date (same as followup_date but date only, e.g. "8 Jul 2026")
+- device_name: TOP-CENTRE header, the commercial device name BEFORE the model code
+  (e.g. "Endurity MRI™" from "Endurity MRI™ 2172 Schrittmacher 4130170")
+- device_class: TOP-CENTRE header, the device class word AFTER the model code and BEFORE
+  the serial (e.g. "Schrittmacher" from "Endurity MRI™ 2172 Schrittmacher 4130170")
+- device_model: TOP-CENTRE header, the model number only (e.g. "2172")
+- device_serial: TOP-CENTRE header, the numeric serial number (e.g. "4130170")
 
 Lead table — rows are labelled "A" (atrial) and "RV" (right ventricular):
+  CRITICAL: each row is INDEPENDENT. Read each cell from its own row only.
+  NEVER copy a serial, model, or date from the A row into the RV row or vice versa.
+  If a cell contains "<not set>", box-glyph padding, or is empty, return null.
+  If a row has no Modell and no Serien-Nr., return null for ALL fields in that row.
   For each row (lead_a / lead_rv):
-  - lead_*_model ← "Modell" column value (e.g. "Tendril™ STS 2088TC"); null if row is empty
-  - lead_*_serial ← "Serien-Nr." column value (e.g. "EEL586541"); null if row is empty
-  - lead_*_implant_date ← "Impl.datum" column value (e.g. "8 Jul 2026")
+  - lead_*_model ← "Modell" column value (e.g. "Tendril™ STS 2088TC"); null if empty or "<not set>"
+  - lead_*_serial ← "Serien-Nr." column value IN THIS ROW ONLY; null if empty or "<not set>"
+  - lead_*_implant_date ← "Impl.datum" column value (e.g. "8 Jul 2026"); null if empty
 
 Testergebnisse section — three columns: "Reizschw." | "Signalamplitude" | "Impedanz":
   For A row (threshold_a / sensing_a / impedance_a):
@@ -899,17 +914,56 @@ _KEY_RENAME = {
 }
 
 
+_PLACEHOLDER = re.compile(r"^<not set>$|^[☐□▫◻◽⬜\s]+$")
+
+_LEAD_PREFIXES = ("lead_a_", "lead_rv_", "lead_lv_")
+
+
 def _postprocess(result: dict) -> dict:
     cleaned = {}
     for k, v in result.items():
         k = _KEY_RENAME.get(k, k)
         if isinstance(v, str):
-            v = _UNIT_SUFFIX.sub("", v).strip()
-            # Strip "Seit " prefix from date fields
-            if k.endswith("_since") or k == "diagnostics_since":
-                v = re.sub(r"^Seit\s+", "", v)
+            if _PLACEHOLDER.match(v):
+                v = None
+            else:
+                v = _UNIT_SUFFIX.sub("", v).strip()
+                if k.endswith("_since") or k == "diagnostics_since":
+                    v = re.sub(r"^Seit\s+", "", v)
         cleaned[k] = v
+    _dedup_lead_serials(cleaned)
     return cleaned
+
+
+def _dedup_lead_serials(result: dict) -> None:
+    """Null out lead serials that were cross-copied from another row."""
+    serials = {}
+    for pfx in _LEAD_PREFIXES:
+        s = result.get(pfx + "serial")
+        if s is not None:
+            serials.setdefault(s, []).append(pfx)
+    for serial, prefixes in serials.items():
+        if len(prefixes) < 2:
+            continue
+        has_model = [p for p in prefixes if result.get(p + "model") is not None]
+        no_model = [p for p in prefixes if result.get(p + "model") is None]
+        if has_model and no_model:
+            for pfx in no_model:
+                result[pfx + "serial"] = None
+                result[pfx + "implant_date"] = None
+        elif not has_model:
+            for pfx in prefixes[1:]:
+                result[pfx + "serial"] = None
+                result[pfx + "implant_date"] = None
+
+
+def _backfill_schema(result: dict, schema: dict) -> None:
+    """Ensure every key from *schema* exists in *result* (recursively for dicts)."""
+    for k, v in schema.items():
+        if k not in result:
+            result[k] = copy.deepcopy(v) if isinstance(v, dict) else v
+        elif isinstance(v, dict) and isinstance(result[k], dict):
+            _backfill_schema(result[k], v)
 
 
 # ── VQA-based report-type classification ──────────────────────────────────────
@@ -1282,11 +1336,16 @@ def extract(
         prompt = PROMPT_SUMMARY
 
     if prompt is not None:
-        raw = _vqa(model, processor, image, prompt)
+        tok = 2048 if report_type == "summary" else 1024
+        raw = _vqa(model, processor, image, prompt, max_new_tokens=tok)
     result = _parse_json(raw)
     # SummaryReport keeps units in values; only strip for other report types
     if report_type not in ("summary",):
         result = _postprocess(result)
+
+    # Backfill missing schema keys so the model dropping a section doesn't lose it
+    if report_type == "summary":
+        _backfill_schema(result, SCHEMA_SUMMARY)
 
     # Merge threshold test data from testergebnisse page (if extracted above)
     for k, v in threshold_result.items():
