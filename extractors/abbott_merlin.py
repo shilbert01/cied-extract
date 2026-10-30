@@ -839,6 +839,10 @@ def detect_report_type(pdf_path: str | Path) -> str:
 # ── VQA inference ─────────────────────────────────────────────────────────────
 
 def _vqa(model, processor, image, prompt: str, max_new_tokens: int = 1024) -> str:
+    from vqa import OllamaVQA
+    if isinstance(model, OllamaVQA):
+        return model(image, prompt, max_new_tokens)
+
     if isinstance(image, (list, tuple)):
         content = [{"type": "image", "image": img} for img in image]
     else:
@@ -1232,7 +1236,8 @@ def extract_single_pass(
     result = {_KEY_RENAME.get(k, k): v for k, v in result.items()}
     result["source_file"] = str(pdf_path)
     result["manufacturer"] = "Abbott"
-    result["vqa_model"] = "Qwen3-VL-8B-Instruct"
+    from vqa import OllamaVQA
+    result["vqa_model"] = repr(model) if isinstance(model, OllamaVQA) else "Qwen3-VL-8B-Instruct"
     return result
 
 
@@ -1258,8 +1263,11 @@ def extract(
     If report_type is None, it is auto-detected.
     """
     pdf_path = Path(pdf_path)
-    if model is None or processor is None:
-        raise ValueError("model and processor must be provided (load via vqa.load_model())")
+    from vqa import OllamaVQA
+    if model is None:
+        raise ValueError("model must be provided (load via vqa.load_model() or vqa.OllamaVQA())")
+    if processor is None and not isinstance(model, OllamaVQA):
+        raise ValueError("processor must be provided for transformers models (load via vqa.load_model())")
 
     images = pdf2image.convert_from_path(str(pdf_path), dpi=dpi, first_page=1, last_page=1)
     image = images[0]
@@ -1384,5 +1392,5 @@ def extract(
     result = {_KEY_RENAME.get(k, k): v for k, v in result.items()}
     result["source_file"] = str(pdf_path)
     result["manufacturer"] = "Abbott"
-    result["vqa_model"] = "Qwen3-VL-8B-Instruct"
+    result["vqa_model"] = repr(model) if isinstance(model, OllamaVQA) else "Qwen3-VL-8B-Instruct"
     return result

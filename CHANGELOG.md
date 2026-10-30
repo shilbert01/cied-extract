@@ -2,6 +2,20 @@
 
 All notable changes to cied-extract are documented here.
 
+## [0.4.0] — 2026-10-30
+
+### Added
+
+- **Selectable VQA backend**: new `CIED_EXTRACT_MODEL` environment variable lets operators choose between `qwen-vl-8b` (default, ~6 GB VRAM, fits 3080 Ti) and `qwen3.8-27b` (~18 GB VRAM, needs RTX 4090+). The 27B model scores 97.5% vs 94.2% for the 8B model on Abbott reports and is ~30% faster per page.
+- **Ollama VQA backend** (`vqa.OllamaVQA`): drop-in replacement for the transformers model path. Sends images to an external Ollama instance via `/api/chat` with automatic context window scaling for multi-page documents. Configured via `CIED_EXTRACT_OLLAMA_URL` and `CIED_EXTRACT_OLLAMA_MODEL`.
+- **Health endpoint**: `/health` now reports which VQA model is active (`vqa_model` field).
+- **Benchmark harness**: `Qwen38Backend` in `benchmark/bench.py` replicates the full production pipeline (VQA classification, multi-page extraction, wrapup merge, key renaming) against Ollama for head-to-head evaluation.
+
+### Improved
+
+- **Abbott `_vqa()` dispatch**: transparently routes to transformers or Ollama based on the model type — no changes needed in report-type-specific extraction logic.
+- **GPU lock skipped for Ollama**: when using the 27B backend, the in-process GPU serialization lock is bypassed since inference runs in the external Ollama container.
+
 ## [0.3.5] — 2026-10-28
 
 ### Added

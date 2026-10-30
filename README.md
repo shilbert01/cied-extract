@@ -8,7 +8,7 @@ Takes PDF reports, programmer log files, and export archives from pacemaker/ICD/
 
 | Manufacturer | Input Formats | Method |
 |---|---|---|
-| **Abbott / St. Jude** | PDF (image-based), `.log` (Merlin PCS) | Qwen3-VL VQA (GPU) or CPU log parser |
+| **Abbott / St. Jude** | PDF (image-based), `.log` (Merlin PCS) | Qwen3-VL-8B or Qwen3.8-27B VQA (GPU), CPU log parser |
 | **Biotronik** | PDF, XML (IEEE 11073, BioStd) | pdfplumber + regex, XML parser |
 | **Boston Scientific** | PDF, `.bnk` (PACEART), HL7 v2.6 | pdfplumber + regex, binary parser |
 | **ELA / Sorin / LivaNova** | PDF | pdfplumber + regex |
@@ -23,10 +23,13 @@ Takes PDF reports, programmer log files, and export archives from pacemaker/ICD/
 # Build
 docker build -t cied-extract .
 
-# Run the HTTP API with GPU (Abbott VQA)
+# Run with Qwen3-VL-8B (default — fits 3080 Ti / 12 GB VRAM)
 docker compose -f docker-compose.api.yml up -d --build
 
-# Health check
+# Run with Qwen3.8-27B via Ollama (needs RTX 4090 / 24 GB VRAM, higher accuracy)
+CIED_EXTRACT_MODEL=qwen3.8-27b docker compose -f docker-compose.api.yml up -d --build
+
+# Health check (shows active model)
 curl http://localhost:8082/health
 
 # Extract a PDF
@@ -81,7 +84,7 @@ Response:
   "status": "ok",
   "engine": {
     "name": "cied-extract",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "extractor": "Biotronik",
     "model": "pdfplumber"
   },
@@ -107,10 +110,17 @@ See [`docs/extract-api-v1.md`](docs/extract-api-v1.md) for the full API contract
 ## Architecture
 
 - **Text-based PDFs** (Biotronik, ELA/Sorin, BSC, Medtronic CareLink): `pdfplumber` text extraction + regex parsing. CPU-only, fast (<1s).
-- **Image-based PDFs** (Abbott): Qwen3-VL-8B-Instruct (4-bit quantized) visual question answering. Requires NVIDIA GPU with ≥8 GB VRAM. ~10-16s per page.
+- **Image-based PDFs** (Abbott): visual question answering with selectable backend. Requires NVIDIA GPU. The VQA model is lazy-loaded on the first Abbott request, so the service starts immediately for non-Abbott vendors.
 - **Binary/text log files**: direct parsing (no OCR needed). CPU-only.
 
-The VQA model is lazy-loaded on the first Abbott request, so the service starts immediately for non-Abbott vendors.
+### Abbott VQA Models
+
+| Model | VRAM | Speed | Accuracy | Backend |
+|---|---|---|---|---|
+| Qwen3-VL-8B (default) | ~6 GB (4-bit) | ~42s/page | 94.2% | transformers |
+| Qwen3.8-27B | ~18 GB (Q4_K_XL) | ~29s/page | 97.5% | Ollama |
+
+Set `CIED_EXTRACT_MODEL=qwen3.8-27b` to use the larger model. This requires an Ollama instance with the model pulled (`ollama pull hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL`). Configure the Ollama URL with `CIED_EXTRACT_OLLAMA_URL` (default: `http://host.docker.internal:11434`).
 
 ## Project Structure
 
@@ -139,7 +149,7 @@ annotator/                 # Ground-truth annotation web tool
 
 ## GPU Requirements
 
-Abbott image-based PDFs require an NVIDIA GPU. The Qwen3-VL-8B model runs in 4-bit quantization and needs ~6 GB VRAM. All other vendors are CPU-only.
+Abbott image-based PDFs require an NVIDIA GPU. The default Qwen3-VL-8B model runs in 4-bit quantization and needs ~6 GB VRAM (fits an RTX 3080 Ti). The optional Qwen3.8-27B model needs ~18 GB VRAM (requires an RTX 4090 or better). All other vendors are CPU-only.
 
 Pin to a specific GPU with `device_ids` in `docker-compose.api.yml`.
 

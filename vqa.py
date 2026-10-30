@@ -9,6 +9,7 @@ Usage:
     python vqa.py report.pdf --verbose   # show raw model response
 """
 import argparse
+import io
 import json
 import os
 import re
@@ -29,6 +30,7 @@ except ImportError:
 
 MODEL_ID     = "Qwen/Qwen3-VL-8B-Instruct"
 MODEL_ID_27B = os.environ.get("VQA_MODEL_27B", "Qwen/Qwen3.8-27B")
+OLLAMA_MODEL_27B = "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL"
 
 # ── schema ────────────────────────────────────────────────────────────────────
 
@@ -193,6 +195,55 @@ def load_model_27b(device: str):
     processor = AutoProcessor.from_pretrained(MODEL_ID_27B)
     print("27B model ready.")
     return model, processor
+
+
+class OllamaVQA:
+    """VQA backend using Ollama HTTP API (e.g. Qwen3.8-27B GGUF).
+
+    Drop-in replacement for (model, processor): pass as model= with processor=None.
+    """
+
+    def __init__(self, url: str = "http://localhost:11434",
+                 model: str = OLLAMA_MODEL_27B):
+        self.url = url
+        self.model_name = model
+
+    def __call__(self, images, prompt: str, max_new_tokens: int = 1024) -> str:
+        import base64
+        import urllib.request
+
+        if not isinstance(images, (list, tuple)):
+            images = [images]
+
+        b64s = []
+        for img in images:
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            b64s.append(base64.b64encode(buf.getvalue()).decode())
+
+        num_ctx = 16384 + 4096 * max(0, len(b64s) - 1)
+        payload = json.dumps({
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": prompt, "images": b64s}],
+            "stream": False,
+            "think": False,
+            "options": {
+                "temperature": 0,
+                "num_predict": max_new_tokens,
+                "num_ctx": num_ctx,
+            },
+        })
+        req = urllib.request.Request(
+            f"{self.url}/api/chat",
+            data=payload.encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        resp = urllib.request.urlopen(req, timeout=600)
+        return json.loads(resp.read()).get("message", {}).get("content", "")
+
+    def __repr__(self):
+        return f"OllamaVQA({self.url!r}, {self.model_name!r})"
 
 
 def vqa(model, processor, image: Image.Image, prompt: str = None) -> str:

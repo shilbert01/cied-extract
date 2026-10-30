@@ -30,7 +30,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 SCHEMA_VERSION = "1.0"
-ENGINE_VERSION = "0.3.5"          # PSA enhancements, Summary backfill, lead serial dedup
+ENGINE_VERSION = "0.4.0"          # Selectable VQA backend: qwen-vl-8b or qwen3.8-27b (Ollama)
 JOB_TTL_SECONDS = 3600
 SUPPORTED_VENDORS = ["biotronik", "ela_sorin", "boston_scientific", "abbott", "medtronic", "microport"]
 
@@ -47,8 +47,15 @@ log = logging.getLogger("cied-extract.api")
 N_WORKERS = int(os.environ.get("CIED_EXTRACT_WORKERS", "3"))
 _gpu_lock = threading.Lock()
 
+# ── model selection ──────────────────────────────────────────────────────────
+# CIED_EXTRACT_MODEL controls which VQA backend is used for Abbott extraction:
+#   "qwen-vl-8b"  (default) — Qwen3-VL-8B via transformers, ~6 GB VRAM (4-bit), fits 3080 Ti
+#   "qwen3.8-27b"           — Qwen3.8-27B via Ollama HTTP, ~18 GB VRAM (Q4_K_XL), needs ≥RTX 4090
+# When using "qwen3.8-27b", an Ollama instance must be reachable at CIED_EXTRACT_OLLAMA_URL.
+CIED_EXTRACT_MODEL = os.environ.get("CIED_EXTRACT_MODEL", "qwen-vl-8b").lower().strip()
+
 # ── lazy Qwen VQA model (Abbott only) ─────────────────────────────────────────
-_vqa = None                       # (model, processor)
+_vqa = None                       # (model, processor) or (OllamaVQA, None)
 _vqa_state = "unloaded"           # unloaded | loading | ready | error
 _vqa_error: str | None = None
 _vqa_lock = threading.Lock()
@@ -64,24 +71,36 @@ def _get_vqa():
         if _vqa is None:
             _vqa_state = "loading"
             try:
-                # torch 2.4 (base image) lacks nn.Module.set_submodule, which
-                # transformers 5.x's bitsandbytes 4-bit integration calls. Shim it
-                # so we can keep the memory-friendly 4-bit load without a torch bump.
-                import torch.nn as _nn
-                if not hasattr(_nn.Module, "set_submodule"):
-                    def _set_submodule(self, target, module):
-                        *parents, name = target.split(".")
-                        mod = self
-                        for p in parents:
-                            mod = getattr(mod, p)
-                        setattr(mod, name, module)
-                    _nn.Module.set_submodule = _set_submodule
-                from vqa import load_model
-                device = os.environ.get("FORCE_DEVICE") or "cuda"
-                log.info("Loading Qwen VQA model (%s) for Abbott extraction…", device)
-                _vqa = load_model(device)
+                if CIED_EXTRACT_MODEL == "qwen3.8-27b":
+                    from vqa import OllamaVQA
+                    ollama_url = os.environ.get("CIED_EXTRACT_OLLAMA_URL",
+                                                "http://localhost:11434")
+                    ollama_model = os.environ.get(
+                        "CIED_EXTRACT_OLLAMA_MODEL",
+                        "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL",
+                    )
+                    log.info("Using Ollama VQA backend: %s at %s", ollama_model, ollama_url)
+                    backend = OllamaVQA(url=ollama_url, model=ollama_model)
+                    _vqa = (backend, None)
+                else:
+                    # torch 2.4 (base image) lacks nn.Module.set_submodule, which
+                    # transformers 5.x's bitsandbytes 4-bit integration calls. Shim it
+                    # so we can keep the memory-friendly 4-bit load without a torch bump.
+                    import torch.nn as _nn
+                    if not hasattr(_nn.Module, "set_submodule"):
+                        def _set_submodule(self, target, module):
+                            *parents, name = target.split(".")
+                            mod = self
+                            for p in parents:
+                                mod = getattr(mod, p)
+                            setattr(mod, name, module)
+                        _nn.Module.set_submodule = _set_submodule
+                    from vqa import load_model
+                    device = os.environ.get("FORCE_DEVICE") or "cuda"
+                    log.info("Loading Qwen VQA model (%s) for Abbott extraction…", device)
+                    _vqa = load_model(device)
                 _vqa_state = "ready"
-                log.info("Qwen VQA model ready")
+                log.info("VQA backend ready (%s)", CIED_EXTRACT_MODEL)
             except Exception as e:
                 _vqa_error = str(e)
                 _vqa_state = "error"
@@ -222,7 +241,7 @@ def _worker():
 async def lifespan(_app: FastAPI):
     for i in range(N_WORKERS):
         threading.Thread(target=_worker, name=f"async-worker-{i}", daemon=True).start()
-    log.info("Started %d async workers", N_WORKERS)
+    log.info("Started %d async workers; Abbott VQA model: %s", N_WORKERS, CIED_EXTRACT_MODEL)
     yield
 
 
@@ -242,6 +261,7 @@ def health():
         "engine_version": ENGINE_VERSION,
         "schema_version": SCHEMA_VERSION,
         "supported_vendors": SUPPORTED_VENDORS,
+        "vqa_model": CIED_EXTRACT_MODEL,
         "vqa_state": _vqa_state,           # Abbott (Qwen) readiness
     }
     if _vqa_state == "error":
@@ -285,8 +305,11 @@ def _do_extract(body: bytes, vendor_hint: str, request_id: str,
             hl7_tf.close()
         try:
             if is_abbott and not uses_log:
-                with _gpu_lock:            # serialize the single GPU/Qwen model
+                if CIED_EXTRACT_MODEL == "qwen3.8-27b":
                     report = _dispatch(tf.name, vendor_hint)
+                else:
+                    with _gpu_lock:        # serialize the in-process GPU/Qwen model
+                        report = _dispatch(tf.name, vendor_hint)
             else:
                 report = _dispatch(tf.name, vendor_hint,
                                    log_tf.name if log_tf else None,
@@ -310,7 +333,7 @@ def _do_extract(body: bytes, vendor_hint: str, request_id: str,
             "name": "cied-extract",
             "version": ENGINE_VERSION,
             "extractor": (report.get("manufacturer") if isinstance(report, dict) else None) or vendor_hint,
-            "model": ("log" if uses_log else "qwen-vqa") if is_abbott
+            "model": ("log" if uses_log else f"qwen-vqa/{CIED_EXTRACT_MODEL}") if is_abbott
                      else ("native" if (log_ext not in ("", ".log") and not body) else "pdfplumber"),
         },
         "source": {"pages": _page_count(body) if body else None, "sha256": sha,

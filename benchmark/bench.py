@@ -665,10 +665,333 @@ class DeepseekOCRBackend(Backend):
         return result
 
 
+# ── backend: InternVL3.5-8B (VLM contender) ──────────────────────────────────
+
+def _internvl_build_transform(input_size=448):
+    import torchvision.transforms as T
+    from torchvision.transforms.functional import InterpolationMode
+    return T.Compose([
+        T.Lambda(lambda img: img.convert("RGB") if img.mode != "RGB" else img),
+        T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC),
+        T.ToTensor(),
+        T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+    ])
+
+
+def _internvl_dynamic_preprocess(image, min_num=1, max_num=12, image_size=448,
+                                  use_thumbnail=True):
+    import math
+    orig_width, orig_height = image.size
+    aspect_ratio = orig_width / orig_height
+    target_ratios = sorted(set(
+        (i, j) for n in range(min_num, max_num + 1)
+        for i in range(1, n + 1) for j in range(1, n + 1)
+        if min_num <= i * j <= max_num
+    ), key=lambda x: x[0] * x[1])
+    best_ratio = min(target_ratios,
+                     key=lambda r: abs(aspect_ratio - r[0] / r[1]))
+    tw = image_size * best_ratio[0]
+    th = image_size * best_ratio[1]
+    resized = image.resize((tw, th))
+    blocks = best_ratio[0] * best_ratio[1]
+    cols = tw // image_size
+    tiles = [resized.crop(((i % cols) * image_size, (i // cols) * image_size,
+                           ((i % cols) + 1) * image_size, ((i // cols) + 1) * image_size))
+             for i in range(blocks)]
+    if use_thumbnail and len(tiles) != 1:
+        tiles.append(image.resize((image_size, image_size)))
+    return tiles
+
+
+def _internvl_load_image(pil_img, max_num=12):
+    import torch
+    transform = _internvl_build_transform()
+    tiles = _internvl_dynamic_preprocess(pil_img, max_num=max_num)
+    pixel_values = torch.stack([transform(t) for t in tiles])
+    return pixel_values.to(torch.bfloat16)
+
+
+class InternVLBackend(Backend):
+    name = "internvl"
+
+    def setup(self, **kwargs):
+        super().setup(**kwargs)
+        import torch
+        from transformers import AutoModel, AutoTokenizer, BitsAndBytesConfig
+        import transformers.modeling_utils as _mu
+
+        _orig_init_subclass = _mu.PreTrainedModel.__init_subclass__
+        @classmethod
+        def _patched_init_subclass(cls, **kw):
+            _orig_init_subclass.__func__(cls, **kw)
+            if not hasattr(cls, "all_tied_weights_keys"):
+                cls.all_tied_weights_keys = {}
+        _mu.PreTrainedModel.__init_subclass__ = _patched_init_subclass
+
+        model_id = "OpenGVLab/InternVL3_5-8B"
+        device = kwargs.get("device", "cuda")
+        print(f"Loading {model_id} (BNB 4-bit) on {device} …")
+        bnb = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+        )
+        self.model = AutoModel.from_pretrained(
+            model_id,
+            quantization_config=bnb,
+            device_map={"": 0},
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16,
+        ).eval()
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_id, trust_remote_code=True, use_fast=False,
+        )
+        _mu.PreTrainedModel.__init_subclass__ = _orig_init_subclass
+        print("InternVL3.5-8B ready.")
+
+    def extract(self, pdf_path: Path, meta: dict) -> dict:
+        import torch
+        import pdf2image
+        from extractors.abbott_merlin import (
+            detect_report_type, _parse_json, _postprocess,
+            PROMPT_SUMMARY, PROMPT_FASTPATH_ICD, PROMPT_FASTPATH_PM,
+            PROMPT_FREEZE, PROMPT_WRAPUP_ICD, PROMPT_PSA,
+            PROMPT_PARAMETER_ICD, PROMPT_UNIFIED,
+        )
+        rt = detect_report_type(pdf_path)
+        prompts = {
+            "freeze": PROMPT_FREEZE, "fastpath_icd": PROMPT_FASTPATH_ICD,
+            "fastpath_pm": PROMPT_FASTPATH_PM, "summary": PROMPT_SUMMARY,
+            "wrapup": PROMPT_WRAPUP_ICD, "psa": PROMPT_PSA,
+            "parameters_icd": PROMPT_PARAMETER_ICD,
+        }
+        prompt = prompts.get(rt, PROMPT_UNIFIED)
+
+        images = pdf2image.convert_from_path(str(pdf_path), dpi=200,
+                                              first_page=1, last_page=1)
+        pixel_values = _internvl_load_image(images[0], max_num=6).to(self.model.device)
+
+        question = "<image>\n" + prompt
+        generation_config = {"max_new_tokens": 2048, "do_sample": False}
+        response = self.model.chat(
+            self.tokenizer, pixel_values, question,
+            generation_config, history=None, return_history=False,
+        )
+        result = _parse_json(response)
+        if rt != "summary":
+            result = _postprocess(result)
+        return result
+
+
+# ── backend: Qwen3-VL-32B (larger Qwen VLM) ─────────────────────────────────
+
+class Qwen32BBackend(Backend):
+    name = "qwen-vl-32b"
+
+    def setup(self, **kwargs):
+        super().setup(**kwargs)
+        import torch
+        from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3VLForConditionalGeneration
+
+        model_id = "Qwen/Qwen3-VL-32B-Instruct"
+        device = kwargs.get("device", "cuda")
+        print(f"Loading {model_id} (4-bit) on {device} …")
+        bnb = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+        )
+        self.model = Qwen3VLForConditionalGeneration.from_pretrained(
+            model_id,
+            quantization_config=bnb,
+            device_map="auto",
+        ).eval()
+        self.processor = AutoProcessor.from_pretrained(model_id)
+        print("Qwen3-VL-32B ready.")
+
+    def extract(self, pdf_path: Path, meta: dict) -> dict:
+        from extractors.abbott_merlin import extract, detect_report_type
+        rt = detect_report_type(pdf_path)
+        return extract(pdf_path, self.model, self.processor, report_type=rt)
+
+
+# ── backend: Qwen3.8-27B via Ollama (GGUF Q4, vision) ──────────────────────
+
+class Qwen38Backend(Backend):
+    name = "qwen3.8-27b"
+
+    def setup(self, **kwargs):
+        super().setup(**kwargs)
+        self.llm_url = kwargs.get("llm_url", "http://localhost:11434")
+        self.llm_model = "hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL"
+        self._dpi = kwargs.get("dpi", 200)
+        print(f"Using {self.llm_model} via Ollama at {self.llm_url}")
+
+    def _ollama_vqa(self, b64_image: str, prompt: str, num_predict: int = 4096) -> str:
+        return self._ollama_vqa_multi([b64_image], prompt, num_predict)
+
+    def _ollama_vqa_multi(self, b64_images: list[str], prompt: str, num_predict: int = 4096) -> str:
+        import urllib.request
+        num_ctx = 16384 + 4096 * max(0, len(b64_images) - 1)
+        payload = json.dumps({
+            "model": self.llm_model,
+            "messages": [{"role": "user", "content": prompt, "images": b64_images}],
+            "stream": False,
+            "think": False,
+            "options": {"temperature": 0, "num_predict": num_predict, "num_ctx": num_ctx},
+        })
+        req = urllib.request.Request(
+            f"{self.llm_url}/api/chat",
+            data=payload.encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            resp = urllib.request.urlopen(req, timeout=600)
+            return json.loads(resp.read()).get("message", {}).get("content", "")
+        except urllib.error.HTTPError as e:
+            body = e.read().decode()[:500]
+            raise RuntimeError(f"Ollama HTTP {e.code}: {body}")
+
+    def _image_to_b64(self, image) -> str:
+        import base64, io
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+
+    def _classify_report(self, image) -> str | None:
+        from extractors.abbott_merlin import CLASSIFY_PROMPT_FAST
+        w, h = image.size
+        crop = image.crop((0, 0, w, int(h * 0.30)))
+        b64 = self._image_to_b64(crop)
+        raw = self._ollama_vqa(b64, CLASSIFY_PROMPT_FAST, num_predict=20).strip().lower()
+        for rt in ("testergebnisse_icd", "parameters_icd", "fastpath_icd",
+                    "fastpath_pm", "summary", "freeze", "wrapup", "psa"):
+            if rt in raw:
+                return rt
+        return None
+
+    def extract(self, pdf_path: Path, meta: dict) -> dict:
+        import pdf2image
+        from extractors.abbott_merlin import (
+            detect_report_type, _parse_json, _postprocess, _page_count,
+            _KEY_RENAME, _backfill_schema,
+            PROMPT_SUMMARY, PROMPT_FASTPATH_ICD, PROMPT_FASTPATH_PM,
+            PROMPT_FREEZE, PROMPT_WRAPUP_ICD, PROMPT_PSA,
+            PROMPT_PARAMETER_ICD, PROMPT_TESTERGEBNISSE_RV,
+            SCHEMA_SUMMARY,
+        )
+
+        images = pdf2image.convert_from_path(str(pdf_path), dpi=self._dpi,
+                                              first_page=1, last_page=1)
+        image = images[0]
+        threshold_result: dict = {}
+
+        rt = detect_report_type(pdf_path)
+        if rt is None:
+            rt = self._classify_report(image)
+        if rt is None:
+            rt = "summary"
+
+        if rt == "parameters_icd":
+            n = _page_count(pdf_path)
+            if n > 1:
+                last_imgs = pdf2image.convert_from_path(
+                    str(pdf_path), dpi=self._dpi, first_page=n, last_page=n)
+                last_type = self._classify_report(last_imgs[0])
+                if last_type == "wrapup":
+                    image = last_imgs[0]
+                    rt = "wrapup"
+
+        if rt == "testergebnisse_icd":
+            n = _page_count(pdf_path)
+            if n > 1:
+                p2_imgs = pdf2image.convert_from_path(
+                    str(pdf_path), dpi=self._dpi, first_page=2, last_page=2)
+                p2_type = self._classify_report(p2_imgs[0])
+                if p2_type in ("parameters_icd", "testergebnisse_icd", None):
+                    b64_p1 = self._image_to_b64(image)
+                    raw_thr = self._ollama_vqa(b64_p1, PROMPT_TESTERGEBNISSE_RV)
+                    try:
+                        threshold_result = _parse_json(raw_thr)
+                        threshold_result = _postprocess(threshold_result)
+                    except Exception:
+                        threshold_result = {}
+                    image = p2_imgs[0]
+                    rt = "parameters_icd"
+
+        prompts = {
+            "psa": PROMPT_PSA, "freeze": PROMPT_FREEZE,
+            "fastpath_icd": PROMPT_FASTPATH_ICD,
+            "fastpath_pm": PROMPT_FASTPATH_PM,
+            "wrapup": PROMPT_WRAPUP_ICD,
+            "summary": PROMPT_SUMMARY,
+        }
+
+        if rt == "parameters_icd":
+            n = _page_count(pdf_path)
+            if n > 1:
+                all_imgs = pdf2image.convert_from_path(str(pdf_path), dpi=self._dpi)
+                b64s = [self._image_to_b64(img) for img in all_imgs]
+            else:
+                b64s = [self._image_to_b64(image)]
+            raw = self._ollama_vqa_multi(b64s, PROMPT_PARAMETER_ICD)
+            result = _parse_json(raw)
+            result = _postprocess(result)
+        else:
+            prompt = prompts.get(rt, PROMPT_SUMMARY)
+            b64 = self._image_to_b64(image)
+            raw = self._ollama_vqa(b64, prompt)
+            result = _parse_json(raw)
+            if rt != "summary":
+                result = _postprocess(result)
+
+        if rt == "summary":
+            _backfill_schema(result, SCHEMA_SUMMARY)
+
+        for k, v in threshold_result.items():
+            if k not in ("report_type", "source_file", "manufacturer", "vqa_model") and v is not None:
+                result.setdefault(k, v)
+                if result.get(k) is None:
+                    result[k] = v
+
+        _SKIP_MERGE = {"report_type", "source_file", "manufacturer", "vqa_model",
+                       "patient_name", "followup_date", "device_model", "device_serial"}
+        if rt != "wrapup":
+            n = _page_count(pdf_path)
+            for pg in range(2, n + 1):
+                pg_imgs = pdf2image.convert_from_path(
+                    str(pdf_path), dpi=self._dpi, first_page=pg, last_page=pg)
+                pg_type = self._classify_report(pg_imgs[0])
+                if pg_type == "wrapup":
+                    b64_wu = self._image_to_b64(pg_imgs[0])
+                    raw_wu = self._ollama_vqa(b64_wu, PROMPT_WRAPUP_ICD)
+                    try:
+                        wu = _parse_json(raw_wu)
+                        wu = _postprocess(wu)
+                        wu = {_KEY_RENAME.get(k, k): v for k, v in wu.items()}
+                        for k, v in wu.items():
+                            if k in _SKIP_MERGE or v is None:
+                                continue
+                            if result.get(k) is None:
+                                result[k] = v
+                    except Exception:
+                        pass
+                    break
+
+        result = {_KEY_RENAME.get(k, k): v for k, v in result.items()}
+        return result
+
+
 # ── registry ─────────────────────────────────────────────────────────────────
 
 BACKENDS = {
     "qwen-vl":       QwenVLBackend,
+    "internvl":      InternVLBackend,
+    "qwen-vl-32b":   Qwen32BBackend,
+    "qwen3.8-27b":   Qwen38Backend,
     "oxr":           OXRBackend,
     "oxr+llm":       OXRLLMBackend,
     "paddleocr":     PaddleOCRBackend,
@@ -747,6 +1070,10 @@ def main():
                     "label": label, "error": str(e),
                     "match": 0, "total": 0, "pct": 0, "latency_s": 0,
                 })
+                try:
+                    import torch; torch.cuda.empty_cache()
+                except Exception:
+                    pass
                 continue
             latency = time.monotonic() - t0
 
@@ -771,6 +1098,10 @@ def main():
                 "latency_s": round(latency, 2),
                 "misses": [(f, g, e) for f, g, e in misses],
             })
+            try:
+                import torch; torch.cuda.empty_cache()
+            except Exception:
+                pass
 
         # Summary for this backend
         total_match = sum(r["match"] for r in backend_results)

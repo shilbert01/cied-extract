@@ -1,7 +1,9 @@
 # cied-extract HTTP service (server.py — docs/extract-api-v1.md)
 #
-# GPU (default):
+# GPU (default — Qwen3-VL-8B, fits 3080 Ti 12 GB):
 #   docker compose -f docker-compose.api.yml up -d --build
+# GPU (Qwen3.8-27B via Ollama — needs ≥RTX 4090 24 GB):
+#   CIED_EXTRACT_MODEL=qwen3.8-27b docker compose -f docker-compose.api.yml up -d --build
 # CPU-only (slower, no nvidia-container-toolkit needed):
 #   docker compose -f docker-compose.api.yml -f docker-compose.cpu.yml up -d --build
 #
@@ -31,8 +33,15 @@ services:
 
     environment:
       HF_HOME: /cache/huggingface
+      # qwen-vl-8b (default): transformers 4-bit, ~6 GB VRAM, fits 3080 Ti
+      # qwen3.8-27b: Ollama GGUF Q4_K_XL, ~18 GB VRAM, needs ≥RTX 4090
+      CIED_EXTRACT_MODEL: ${CIED_EXTRACT_MODEL:-qwen-vl-8b}
+      CIED_EXTRACT_OLLAMA_URL: ${CIED_EXTRACT_OLLAMA_URL:-http://host.docker.internal:11434}
       NVIDIA_VISIBLE_DEVICES: "1"
       CUDA_VISIBLE_DEVICES: "0"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
     # Pin to GPU 1 (RTX 3080 Ti) — GPU 0 (RTX 4090) is reserved for Ollama
     deploy:
